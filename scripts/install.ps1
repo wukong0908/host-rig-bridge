@@ -1,9 +1,13 @@
 ﻿# install.ps1 — Windows 外机一次性 setup (等价 Linux install.sh)
 # 用法 (管理员 PowerShell 7, 在外机上跑):
-#   iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex `
+#       -UserName mcp-rig -ServerDir C:\Users\mcp-rig\mcp-server -Sandbox C:\Users\mcp-rig\projects
 # 或:
 #   Invoke-WebRequest .../install.ps1 -OutFile install.ps1
-#   .\install.ps1 -UserName mcp-rig
+#   .\install.ps1 -UserName mcp-rig -ServerDir C:\Users\mcp-rig\mcp-server -Sandbox C:\Users\mcp-rig\projects
+#
+# 必传: -UserName / -ServerDir / -Sandbox (路径不固定, 防误装)
+# 选传: -GitToken (私有仓 clone 需 PAT)
 #
 # 行为:
 #   0. Preflight 体检 (pwsh / python / git / OpenSSH / 网络)
@@ -17,11 +21,15 @@
 
 [CmdletBinding()]
 param(
-    [string]$UserName = "mcp-rig",
+    [Parameter(Mandatory)]
+    [string]$UserName,
     [string]$Repo = "wukong0908/host-rig-bridge",
     [string]$Branch = "main",
-    [string]$ServerDir = "C:\Users\mcp-rig\mcp-server",
-    [string]$Sandbox = "C:\Users\mcp-rig\projects",
+    # ServerDir 必传 — 不固定位置, 防误装
+    [Parameter(Mandatory)]
+    [string]$ServerDir,
+    [Parameter(Mandatory)]
+    [string]$Sandbox,
     # PAT 走 clone (private repo iwr | bash 拿不到 raw URL; 主人在自己机手输)
     [string]$GitToken = ""
 )
@@ -86,7 +94,7 @@ function Test-Preflight {
     $missing = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" } | ForEach-Object { $_.Key }
     # openssh 缺可自动装 (stage 6), 不算 fatal
     if ($missing -contains "python") {
-        Write-Error "缺 Python — 装: winget install --id Python.Python.3.13 -e"
+        Write-Error "缺 Python — 装: winget install --id Python.Python.3.13 -e   (3.13 当前 stable latest, 后续 winget upgrade 跟新)"
     }
     if ($missing -contains "git") {
         Write-Error "缺 git — 装: winget install --id Git.Git -e"
