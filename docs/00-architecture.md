@@ -27,7 +27,7 @@
 ┌──────────────┐            ┌──────────────┐                ┌──────────────┐
 │  分机 #1     │            │  分机 #2     │                │  分机 #N     │
 │  mcp-rig 账 │            │  mcp-rig 账 │                │  mcp-rig 账 │
-│  沙箱 /home │            │  沙箱 /home │                │  ...        │
+│  沙箱 C:/   │            │  沙箱 C:/   │                │  ...        │
 └──────────────┘            └──────────────┘                └──────────────┘
 
 外部世界 (主人手机 / 外网电脑)
@@ -94,8 +94,8 @@
 主机侧:
   pwsh scripts/register-rig.ps1 -RigAlias newrig
 
-分机侧:
-  curl -fsSL .../install.sh | bash -s -- --user mcp-rig
+分机侧 (Windows):
+  iwr -useb .../install.ps1 | iex
 
 握手:
   ssh -o StrictHostKeyChecking=accept-new newrig
@@ -146,7 +146,7 @@ watchdog 收到飞书告警 → 看告警级别:
 ## 六、什么时候升级本体系?
 
 - 加新场景: 编辑 `docs/01-scenarios.md` 加章节 + 在 `server/` 加工具
-- 加新分机: 编辑 `rigs.local.yaml` + 跑 `register-rig.ps1` + 跑 `install.sh`
+- 加新分机: 编辑 `rigs.local.yaml` + 跑 `register-rig.ps1` + 跑 `install.ps1`
 - 改安全策略: 编辑 `docs/02-security-model.md` + 同步改 `server/sandbox.py`
 - 升级 MCP 协议: 参考 `mcp[server]>=1.0,<2.0` 版本约束, 跨大版本需 `cavecrew-reviewer` 走一轮
 

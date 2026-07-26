@@ -116,13 +116,14 @@ rigs:                               # 必填, 数组
 
 ## 校验
 
-`scripts/verify-rig.ps1 -Rig <alias>` 会:
+`scripts/verify.ps1 -Rig <alias>` 会:
 1. 加载 rigs.local.yaml
 2. 找到对应 alias
-3. SSH BatchMode 验握手(`ssh -o BatchMode=yes -o ConnectTimeout=5 <alias> "echo OK"`)
-4. SSH 上跑 `test -f <server>` / `test -d <venv>` / `test -d <sandbox>`
-5. SSH 上跑 `pgrep -af server.py` 看进程在不在
-6. 端到端 MCP 工具调用(若 Claude 已重启加载 mcpServers)
+3. SSH BatchMode 验链路可达(走 forced command, 不发普通命令)
+4. rigs.yaml 含 server/venv/sandbox 路径校验
+5. ~/.claude.json mcpServers.<alias> 注册校验
+6. known_hosts.<alias> fingerprint 校验
+7. 端到端 MCP 工具调用(若 Claude 已重启加载 mcpServers, 走 list_dir / read_file 验)
 
 详见 `scripts/verify.ps1` 实现。
 

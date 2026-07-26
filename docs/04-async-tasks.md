@@ -37,8 +37,7 @@
 async def start_task(
     cmd: str,                    # 同 run_command, 走 WHITELIST + 沙箱 + env 净化
     cwd: str | None = None,      # 沙箱内相对路径, None = sandbox root
-    timeout: int = 7200,         # 默认 2h, 上限 86400s (24h)
-    stream_chunk: int = 4096,    # 输出分片大小 (bytes), 默认 4KB
+    timeout: int = 7200,         # 默认 2h, 上限 7200s (2h, sandbox.ASYNC_TIMEOUT_MAX)
 ) -> dict:
     """
     返回:
@@ -131,9 +130,9 @@ async def task_cancel(task_id: str, force: bool = False) -> dict:
 ```python
 async def task_output_stream(
     task_id: str,
+    stream: str = "stdout",      # "stdout" | "stderr"
     offset: int = 0,             # 字节偏移, 默认 0 (从头读)
-    max_bytes: int = 65536,      # 默认 64KB, 同 run_command
-    follow: bool = False,        # True 时阻塞追新输出
+    max_bytes: int = 65536,      # 默认 64KB, 上限 sandbox.READ_CHUNK
     follow_timeout: int = 30,    # follow 阻塞最长 30s (防 MCP framing 卡死)
 ) -> dict:
     """

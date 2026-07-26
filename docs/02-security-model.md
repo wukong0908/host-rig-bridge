@@ -23,7 +23,7 @@
 │   authorized_keys: command="python -u server.py",              │
 │     no-port-forwarding, no-X11-forwarding,                     │
 │     no-agent-forwarding, no-pty                                │
-│   账号本地账号 ((OpenSSH 锁死 forced command))                              │
+│   账号 Windows 本地账号 (OpenSSH forced command 锁死)             │
 │   账号只能跑 server.py, 跑别的也回到 server.py                  │
 ├───────────────────────────────────────────────────────────────┤
 │ Layer 2: 环境净化                                              │
@@ -112,9 +112,10 @@ except:
 ```python
 SANE_ENV = {
     "PATH": "C:/Windows/System32;C:/Windows;C:/iverilog/bin;C:/altera/quartus/bin64;C:/openFPGALoader",
-    "HOME": f"/home/{RIG_USER}",
-    "LANG": "C.UTF-8",
-    "LC_ALL": "C.UTF-8",
+    "SYSTEMROOT": "C:/Windows",
+    "USERPROFILE": "C:/Users/mcp-rig",
+    "TEMP": "C:/Users/mcp-rig/AppData/Local/Temp",
+    # 注意: 不设 LANG (Windows native 工具不认 POSIX locale, 设了反而拒启)
 }
 subprocess_exec(..., env=SANE_ENV)   # 不是 os.environ
 ```

@@ -89,10 +89,12 @@ function Test-SshConnect {
 
 function Test-McpServer {
     param([string]$Rig, [string]$User, [string]$SrvPath)
-    $needle = ($SrvPath -replace '/', '\\') -replace '\\+', '\'
-    $out = & ssh -T -o BatchMode=yes -o ConnectTimeout=5 $Rig "pgrep -af 'server\.py' || true" 2>&1
-    if (-not $out -or ($out -notmatch "server\.py")) {
-        Send-Alert -Rig $Rig -Level CRIT -Msg "MCP server 进程消失" -Probe "ssh $Rig pgrep -af server.py"
+    # Windows 探针: Get-Process 查 server.py 进程
+    # 走 mcp-rig 账号 SSH 时 forced command 截胡, 改用 powershell 单引号串
+    $out = & ssh -T -o BatchMode=yes -o ConnectTimeout=5 $Rig `
+        "powershell -NoProfile -Command `"Get-Process python -ErrorAction SilentlyContinue | Where-Object { `$_.CommandLine -like '*server.py*' } | Select-Object -First 1 | ForEach-Object { 'PID=' + `$_.Id }`"" 2>&1
+    if (-not $out -or ($out -notmatch "PID=")) {
+        Send-Alert -Rig $Rig -Level CRIT -Msg "MCP server 进程消失" -Probe "ssh $Rig powershell Get-Process *server.py*"
         return $false
     }
     return $true
@@ -101,15 +103,21 @@ function Test-McpServer {
 function Test-SandboxDisk {
     param([string]$Rig, [string]$Sandbox)
     if (-not $Sandbox) { return $true }
-    $out = & ssh -T -o BatchMode=yes -o ConnectTimeout=5 $Rig "df -P '$Sandbox' | tail -1" 2>&1
-    # 格式: Filesystem 1024-blocks Used Available Capacity Mounted
-    if ($out -match '(\d+)%') {
+    # Windows 探针: Get-PSDrive 查沙箱所在盘符使用率
+    # Sandbox 形如 C:/Users/mcp-rig/projects → 取盘符
+    $drive = ($Sandbox -replace ':.*$', '') + ':'
+    $out = & ssh -T -o BatchMode=yes -o ConnectTimeout=5 $Rig `
+        "powershell -NoProfile -Command `"Get-PSDrive -Name '$($drive -replace ':','')' | Select-Object -ExpandProperty Used + ' / ' + (`$_.Used + `$_.Free) + ' ' + [int](`$_.Used/(`$_.Used+`$_.Free)*100) + '%%'`"" 2>&1
+    # 简化为检查 (Get-PSDrive 字段)
+    $out = & ssh -T -o BatchMode=yes -o ConnectTimeout=5 $Rig `
+        "powershell -NoProfile -Command `"`$d=Get-PSDrive -Name '$($drive -replace ':','')'; '{0:N1} GB used / {1}%%' -f (`$d.Used/1GB), [int](`$d.Used/(`$d.Used+`$d.Free)*100)`"" 2>&1
+    if ($out -match '(\d+)%%') {
         $pct = [int]$Matches[1]
         if ($pct -ge 95) {
-            Send-Alert -Rig $Rig -Level CRIT -Msg "沙箱磁盘 ${pct}%" -Probe "df -P $Sandbox"
+            Send-Alert -Rig $Rig -Level CRIT -Msg "沙箱磁盘 ${pct}%" -Probe "Get-PSDrive $drive"
             return $false
         } elseif ($pct -ge 85) {
-            Send-Alert -Rig $Rig -Level WARN -Msg "沙箱磁盘 ${pct}%" -Probe "df -P $Sandbox"
+            Send-Alert -Rig $Rig -Level WARN -Msg "沙箱磁盘 ${pct}%" -Probe "Get-PSDrive $drive"
             return $false
         }
     }
@@ -154,7 +162,9 @@ if ($RigAlias) {
 foreach ($r in $rigs) {
     Write-Output "[$(Get-Date -Format 'o')] rig=$($r.alias) host=$($r.host) user=$($r.user)"
     if (Test-SshConnect -Rig $r.alias) {
-        Test-McpServer -Rig $r.alias -User $r.user -SrvPath "/home/$($r.user)/mcp-server/server.py"
+        # Server path 优先从 rigs.yaml 读, 缺则默认 Windows 路径
+        $srvPath = if ($r.server) { $r.server } else { "C:/Users/$($r.user)/mcp-server/src/server/server.py" }
+        Test-McpServer -Rig $r.alias -User $r.user -SrvPath $srvPath
         Test-SandboxDisk -Rig $r.alias -Sandbox $r.sandbox
     }
     Test-ClaudeJsonRig -Rig $r.alias

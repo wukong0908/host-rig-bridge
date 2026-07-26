@@ -32,9 +32,9 @@
 pwsh scripts/register-rig.ps1 -RigAlias newrig
 ```
 
-外机:
-```bash
-curl -fsSL https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.sh | bash -s -- --user mcp-rig
+外机 (Windows, 管理员 PowerShell):
+```powershell
+iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex
 ```
 
 主机:
@@ -69,7 +69,7 @@ host-rig-bridge/
 
 ## 当前状态
 
-🟡 **Phase A 进行中** — 文档先行, 主体代码未动。
+🟡 **Phase E 完成(99%)** — A/B/C/D/E 全部推 GitHub, 部署侧待主人手动跑 install.ps1 + register-rig.ps1 + verify.ps1 + install-watchdog.ps1。
 
 详见 [`plans/进度追踪.md`](./plans/进度追踪.md)。
 

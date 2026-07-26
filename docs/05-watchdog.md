@@ -35,11 +35,10 @@ watchdog 是**纯外部探针**, 不调用 MCP 工具, 不进 MCP stdio。挂在
 | 监控项 | 探针 | 触发条件 | 级别 |
 |---|---|---|---|
 | SSH 连通 | `ssh -T -o BatchMode=yes -o ConnectTimeout=5 <rig> "echo OK"` | 失败 / 超时 | 🟡 WARN |
-| MCP server 进程 | `ssh <rig> "pgrep -af server.py"` | 返回空 | 🔴 CRIT |
+| MCP server 进程 | `ssh <rig> "powershell Get-Process python \| Where-Object CommandLine -like '*server.py*'"` | 返回空 | 🔴 CRIT |
 | 异步任务失败 | 读 `tasks.db` state=exited rc≠0 | 出现 1 次 | 🟡 WARN |
 | 异步任务异常退出 | state=exited rc=0 但 stderr 非空 | 出现 | 🟢 INFO(可关) |
-| 沙箱磁盘 | `ssh <rig> "df -P /home/<rig-user>"` | >85% WARN, >95% CRIT | — |
-| 沙箱 inode | `ssh <rig> "df -iP /home/<rig-user>"` | >85% | 🟡 WARN |
+| 沙箱磁盘 | `ssh <rig> "powershell Get-PSDrive -Name C \| % used"` | >85% WARN, >95% CRIT | — |
 | 主机 ~/.claude.json 注册 | `Get-Content $HOME\.claude.json` 解析 + 含 mcpServers.<rig> | 解析失败 / 缺 rig | 🟡 WARN |
 | 端到端 round-trip | 任意 MCP 工具调用失败(由主人手动跑 verify.ps1 测) | 失败 | 🔴 CRIT |
 

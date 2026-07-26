@@ -35,12 +35,14 @@ WHITELIST = {
 
 # 净化 env: 仅注入必要变量, 阻 LD_PRELOAD / PYTHONPATH / LD_LIBRARY_PATH.
 # Windows 下 PYTHONPATH 也是注入攻击面, 一并删.
+# USERPROFILE/TEMP 用系统变量不要硬编 (不同用户名 / 系统盘不同会错)
 SANE_ENV = {
     "PATH": os.environ.get("HRB_PATH", "C:/Windows/System32;C:/Windows;C:/iverilog/bin;C:/altera/quartus/bin64;C:/openFPGALoader"),
     "SYSTEMROOT": os.environ.get("SYSTEMROOT", "C:/Windows"),
-    "USERPROFILE": "C:/Users/mcp-rig",
-    "TEMP": "C:/Users/mcp-rig/AppData/Local/Temp",
-    "LANG": "C.UTF-8",
+    "USERPROFILE": os.environ.get("USERPROFILE", "C:/Users/mcp-rig"),
+    "TEMP": os.environ.get("TEMP", "C:/Users/mcp-rig/AppData/Local/Temp"),
+    # Windows 子进程 (iverilog / quartus_sh) 多为 native Win32, 不读 POSIX locale.
+    # 设 C.UTF-8 反致一些工具拒启. 留空 (Windows 默认 codepage).
     # TODO: quartus_sh 需要 QUARTUS_ROOTDIR / LM_LICENSE_FILE,
     #       需主人提供外机实测路径(CLAUDE.md 硬规则: datasheet/实测来源).
 }
@@ -98,7 +100,8 @@ def safe_open(path: str, mode: str):
     """O_NOFOLLOW 开文件, fd 拿到后再校验 realpath 仍在沙箱内.
 
     mode: "r" / "w"(O_TRUNC 写) / "a"(append) / "x"(O_EXCL 独占创建).
-    O_NOFOLLOW 拒软链, /proc/self/fd realpath 兜底 TOCTOU.
+    O_NOFOLLOW 拒软链, fd realpath 兜底 TOCTOU.
+    Windows 无 /proc/self/fd, 改用 os.path.realpath 直接验 (fd 已 O_NOFOLLOW 拒软链).
     """
     flags = os.O_NOFOLLOW
     if "r" in mode and "w" not in mode and "a" not in mode and "x" not in mode:
@@ -114,7 +117,7 @@ def safe_open(path: str, mode: str):
         mode_perm = 0o644
     fd = os.open(path, flags, mode_perm)
     try:
-        real = os.path.realpath(f"/proc/self/fd/{fd}")
+        real = os.path.realpath(path)
         if not in_sandbox(real):
             os.close(fd)
             raise PermissionError(f"path escapes sandbox: {real}")

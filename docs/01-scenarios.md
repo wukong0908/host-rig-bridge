@@ -43,18 +43,18 @@
 
 - **同步等结果** — 若超时(默认 600s, 最长 1800s)直接 kill。需要长跑走场景 3。
 - **stdout 64KB 截断** — Quartus 综合输出可能爆, 走场景 3。
-- **沙箱限** `/home/<rig-user>/projects/` — 沙箱外路径 `read_file("/etc/passwd")` 被拒。
-- **白名单限** — `iverilog` / `vvp` / `quartus_sh` / `openFPGALoader` / `ls`, 其它命令被拒。
-- **路径 realpath 防前缀绕过** — `/home/<rig-user>/projects_evil/` 不在沙箱内(用 `os.path.relpath` 判定)。
+- **沙箱限** `C:/Users/mcp-rig/projects/` — 沙箱外路径 `read_file("C:/Windows/System32/...")` 被拒。
+- **白名单限** — `iverilog` / `vvp` / `quartus_sh` / `openFPGALoader`, 其它命令被拒(ls 也不在, 走 list_dir)。
+- **路径 realpath 防前缀绕过** — `C:/Users/mcp-rig/projects_evil/` 不在沙箱内(用 `os.path.relpath` 判定)。
 
 ### 排查
 
 ```
-ssh <rig>                                           # 登入分机(mcp-rig-debug 账号)
-ls -la C:/Users/mcp-rig/mcp-server/                    # 看 server.py 状态
-tail -f C:/Users/mcp-rig/mcp-server/access.log         # 看审计日志(去敏感)
-pgrep -af server.py                                  # 看进程在不在
-C:/Users/mcp-rig/mcp-server/.venv/bin/python -c \
+ssh <rig>                                           # 登入分机 (走 forced command, 不能交互 shell; 调试建 mcp-rig-debug 账号)
+Get-ChildItem C:/Users/mcp-rig/mcp-server/src/server   # 看 server.py 状态
+Get-Content C:/Users/mcp-rig/mcp-server/access.log -Tail 50 -Wait   # 看审计日志(去敏感)
+Get-Process python | Where-Object { $_.CommandLine -like '*server.py*' }   # 看进程在不在
+& C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -c "from mcp.server.fastmcp import FastMCP; print('mcp SDK OK')"
   "from mcp.server.fastmcp import FastMCP; print('OK')"  # 验 SDK
 ```
 
@@ -164,10 +164,10 @@ sshd 配置改了:
 
 | 工具 | 用途 | 典型签名 |
 |---|---|---|
-| `start_task` | 后台起任务, 立即返回 task_id | `(cmd, cwd=None, timeout=7200, stream_chunk=4096) -> {task_id, pid, state, log_path}` |
-| `task_status` | 查任务当前状态 | `(task_id) -> {task_id, pid, state, rc, started_at, ended_at, duration_ms, stdout_bytes, stderr_bytes}` |
-| `task_cancel` | 取消任务 (SIGTERM → 5s → SIGKILL) | `(task_id, force=False) -> {state, signal}` |
-| `task_output_stream` | 拉增量输出 | `(task_id, offset=0, max_bytes=65536, follow=False, follow_timeout=30) -> {offset, chunk, state, eof}` |
+| `start_task` | 后台起任务, 立即返回 task_id | `(cmd, cwd=None, timeout=7200) -> {task_id, pid, state, started_at, log_dir, cmd_audit}` |
+| `task_status` | 查任务当前状态 | `(task_id) -> {task_id, pid, state, rc, signal, started_at, ended_at, stdout_bytes, stderr_bytes}` |
+| `task_cancel` | 取消任务 (SIGTERM → 5s → SIGKILL) | `(task_id, force=False) -> {state, signal, cancelled_at}` |
+| `task_output_stream` | 拉增量输出 | `(task_id, stream="stdout", offset=0, max_bytes=65536) -> {offset, chunk, truncated, state, eof, bytes_remaining}` |
 
 ### 异步 vs 同步的区别
 
@@ -175,7 +175,7 @@ sshd 配置改了:
 |---|---|---|
 | 阻塞 | 同步等结果 (≤1800s) | 立即返回 |
 | 输出 | 一次性返回 (64KB 截断) | 增量流式拉 (分多次) |
-| 持久化 | 无 | sqlite (`/home/<rig-user>/mcp-server/tasks.db`) |
+| 持久化 | 无 | sqlite (`C:/Users/mcp-rig/mcp-server/tasks.db`) |
 | 取消 | 不支持 | `task_cancel` |
 | 适用 | 分钟级 | 小时级 / 过夜 |
 
