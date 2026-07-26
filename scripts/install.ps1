@@ -241,14 +241,21 @@ try {
     }
 } catch {
     # Get-WindowsCapability 不可用 (Win10 LTSC / 精简版 / server core 没注册类)
-    # fallback: 用 winget 装 Microsoft.OpenSSH.Beta
-    Write-Host "    Get-WindowsCapability 不可用, 用 winget 装 OpenSSH" -ForegroundColor Yellow
-    $proc = Start-Process -FilePath "winget" `
-        -ArgumentList @("install", "--id", "Microsoft.OpenSSH.Beta", "-e", "--source", "winget", `
-                        "--accept-package-agreements", "--accept-source-agreements") `
-        -Wait -PassThru -NoNewWindow
-    if ($proc.ExitCode -ne 0) {
-        throw "winget install OpenSSH 失败, exit=$($proc.ExitCode); 手动装: Settings → Apps → Optional Features → OpenSSH Server"
+    # fallback: DISM 系统 API (比 winget 稳, 走 Windows component store)
+    Write-Host "    Get-WindowsCapability 不可用, 退到 DISM 装 OpenSSH" -ForegroundColor Yellow
+    $dismOut = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw @"
+DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE):
+$dismOut
+
+手动装 (任选一):
+  1. Settings → Apps → Optional Features → 添加 → OpenSSH Server
+  2. dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0
+  3. winget install Microsoft.OpenSSH.Server
+
+装完跳 stage 6 重跑 install.ps1 (幂等)。
+"@
     }
     $installed = $true
 }
