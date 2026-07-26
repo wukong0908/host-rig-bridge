@@ -33,6 +33,126 @@ $FrpcExe    = "$FrpDir\frpc.exe"
 $FrpcToml   = "$FrpDir\frpc.toml"
 $Nssm       = "C:\nssm-2.24\win64\nssm.exe"
 
+# =====================================================================
+# 前置函数 (主流程立即调用: Test-Ready / Show-Status / Invoke-Verify)
+# 必须定义在调用前。PowerShell 函数定义不像 Python 是声明,文件流式解析。
+# =====================================================================
+
+function Test-Ready {
+    $checks = @(
+        @{ N = "sshd 服务";       T = { (Get-Service sshd -ErrorAction SilentlyContinue) -ne $null } }
+        @{ N = "sshd listen 22";  T = { (netstat -ano | findstr :22) -match "LISTENING" } }
+        @{ N = "mcp-rig 账号";    T = { Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue } }
+        @{ N = "server dir";      T = { Test-Path $ServerDir } }
+        @{ N = "venv";            T = { Test-Path "$ServerDir\.venv\Scripts\python.exe" } }
+        @{ N = "src clone";       T = { Test-Path "$ServerDir\src\.git" } }
+        @{ N = "authorized_keys"; T = { Test-Path $AkPath } }
+        @{ N = "frpc 服务";       T = { (Get-Service frpc -ErrorAction SilentlyContinue) -ne $null } }
+        @{ N = "frpc.toml";       T = { Test-Path $FrpcToml } }
+    )
+    $script:ReadyDetail = @()
+    foreach ($c in $checks) {
+        $ok = & $c.T
+        $script:ReadyDetail += [pscustomobject]@{ Name = $c.N; Pass = [bool]$ok }
+    }
+    return ($script:ReadyDetail | Where-Object { -not $_.Pass }).Count -eq 0
+}
+
+function Show-Ready {
+    Write-Host ""
+    Write-Host "✓ 外机已就绪 ($($script:ReadyDetail.Count)/$($script:ReadyDetail.Count)):" -ForegroundColor Green
+    foreach ($r in $script:ReadyDetail) {
+        $mark = if ($r.Pass) { "✓" } else { "✗" }
+        $color = if ($r.Pass) { "DarkGray" } else { "Red" }
+        Write-Host "  $mark $($r.Name)" -ForegroundColor $color
+    }
+    Write-Host ""
+    Write-Host "无需 deploy。如需重做某项,跑 install-rig-bundle.ps1 -Status" -ForegroundColor Cyan
+}
+
+function Show-Status {
+    Test-Ready | Out-Null
+    Write-Host ""
+    Write-Host "=== 当前状态 ===" -ForegroundColor Cyan
+    foreach ($r in $script:ReadyDetail) {
+        $mark = if ($r.Pass) { "✓" } else { "✗" }
+        $color = if ($r.Pass) { "Green" } else { "Red" }
+        Write-Host "  $mark $($r.Name)" -ForegroundColor $color
+    }
+    Write-Host ""
+    $sshd = Get-Service sshd -ErrorAction SilentlyContinue
+    Write-Host "sshd:        $(if ($sshd) { $sshd.Status } else { '未装' })"
+    $frpc = Get-Service frpc -ErrorAction SilentlyContinue
+    Write-Host "frpc:        $(if ($frpc) { $frpc.Status } else { '未装' })"
+    Write-Host "server dir:  $(if (Test-Path $ServerDir) { '在' } else { '不在' })"
+    Write-Host "venv:        $(if (Test-Path "$ServerDir\.venv") { '在' } else { '不在' })"
+    Write-Host "src:         $(if (Test-Path "$ServerDir\src") { '在' } else { '不在' })"
+    Write-Host "authorized_keys: $(if (Test-Path $AkPath) { (Get-Content $AkPath).Count + ' 行' } else { '不在' })"
+    Write-Host "frpc toml:   $(if (Test-Path $FrpcToml) { '在' } else { '不在' })"
+}
+
+function Invoke-Verify {
+    Write-Host ""
+    Write-Host "=== Verify (5 步) ===" -ForegroundColor Cyan
+    $results = @()
+
+    Write-Host "[1/5] sshd 听 22 ..." -NoNewline
+    if ((netstat -ano | findstr :22) -match "LISTENING") {
+        Write-Host " ✓" -ForegroundColor Green
+        $results += $true
+    } else {
+        Write-Host " ✗" -ForegroundColor Red
+        $results += $false
+    }
+
+    Write-Host "[2/5] frpc 服务 ..." -NoNewline
+    $svc = Get-Service frpc -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq "Running") {
+        Write-Host " ✓" -ForegroundColor Green
+        $results += $true
+    } else {
+        Write-Host " ✗" -ForegroundColor Red
+        $results += $false
+    }
+
+    Write-Host "[3/5] VPS $Vps`:$RemotePort TCP ..." -NoNewline
+    try {
+        $tcp = Test-NetConnection -ComputerName $Vps -Port $RemotePort -InformationLevel Quiet -WarningAction SilentlyContinue
+        if ($tcp) { Write-Host " ✓" -ForegroundColor Green; $results += $true }
+        else { Write-Host " ✗" -ForegroundColor Red; $results += $false }
+    } catch {
+        Write-Host " ✗" -ForegroundColor Red
+        $results += $false
+    }
+
+    Write-Host "[4/5] mcp SDK ..." -NoNewline
+    $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import FastMCP; print('OK')" 2>&1
+    if ($ok -match "OK") {
+        Write-Host " ✓" -ForegroundColor Green
+        $results += $true
+    } else {
+        Write-Host " ✗" -ForegroundColor Red
+        $results += $false
+    }
+
+    Write-Host "[5/5] ssh $UserName@$Vps -p $RemotePort (3s probe) ..." -NoNewline
+    $probe = ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -p $RemotePort "$UserName@$Vps" "echo SSH_OK" 2>&1
+    if ($LASTEXITCODE -eq 0 -and $probe -match "SSH_OK") {
+        Write-Host " ⚠ forced command 没截" -ForegroundColor Yellow
+        $results += $false
+    } elseif ($probe -match "Permission denied") {
+        Write-Host " ✗ Permission denied" -ForegroundColor Red
+        $results += $false
+    } else {
+        Write-Host " ✓ (forced command 生效)" -ForegroundColor Green
+        $results += $true
+    }
+
+    $pass = ($results | Where-Object { $_ }).Count
+    Write-Host ""
+    Write-Host "Verify 结果: $pass / 5 通过" -ForegroundColor $(if ($pass -eq 5) { "Green" } else { "Yellow" })
+}
+
 # ===== 段 0: 解析入参 =====
 $Vps         = $env:RIG_VPS
 $FrpToken    = $env:RIG_FRP_TOKEN
@@ -96,61 +216,8 @@ Show-NextSteps
 exit 0
 
 # =====================================================================
-# 函数区 (主流程结束后被调)
+# Deploy 阶段函数 (主流程 Run-Stage 调用,定义放这里可读性更好)
 # =====================================================================
-
-function Test-Ready {
-    $checks = @(
-        @{ N = "sshd 服务";       T = { (Get-Service sshd -ErrorAction SilentlyContinue) -ne $null } }
-        @{ N = "sshd listen 22";  T = { (netstat -ano | findstr :22) -match "LISTENING" } }
-        @{ N = "mcp-rig 账号";    T = { Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue } }
-        @{ N = "server dir";      T = { Test-Path $ServerDir } }
-        @{ N = "venv";            T = { Test-Path "$ServerDir\.venv\Scripts\python.exe" } }
-        @{ N = "src clone";       T = { Test-Path "$ServerDir\src\.git" } }
-        @{ N = "authorized_keys"; T = { Test-Path $AkPath } }
-        @{ N = "frpc 服务";       T = { (Get-Service frpc -ErrorAction SilentlyContinue) -ne $null } }
-        @{ N = "frpc.toml";       T = { Test-Path $FrpcToml } }
-    )
-    $script:ReadyDetail = @()
-    foreach ($c in $checks) {
-        $ok = & $c.T
-        $script:ReadyDetail += [pscustomobject]@{ Name = $c.N; Pass = [bool]$ok }
-    }
-    return ($script:ReadyDetail | Where-Object { -not $_.Pass }).Count -eq 0
-}
-
-function Show-Ready {
-    Write-Host ""
-    Write-Host "✓ 外机已就绪 ($($script:ReadyDetail.Count)/$($script:ReadyDetail.Count)):" -ForegroundColor Green
-    foreach ($r in $script:ReadyDetail) {
-        $mark = if ($r.Pass) { "✓" } else { "✗" }
-        $color = if ($r.Pass) { "DarkGray" } else { "Red" }
-        Write-Host "  $mark $($r.Name)" -ForegroundColor $color
-    }
-    Write-Host ""
-    Write-Host "无需 deploy。如需重做某项,跑 install-rig-bundle.ps1 -Status" -ForegroundColor Cyan
-}
-
-function Show-Status {
-    Test-Ready | Out-Null
-    Write-Host ""
-    Write-Host "=== 当前状态 ===" -ForegroundColor Cyan
-    foreach ($r in $script:ReadyDetail) {
-        $mark = if ($r.Pass) { "✓" } else { "✗" }
-        $color = if ($r.Pass) { "Green" } else { "Red" }
-        Write-Host "  $mark $($r.Name)" -ForegroundColor $color
-    }
-    Write-Host ""
-    $sshd = Get-Service sshd -ErrorAction SilentlyContinue
-    Write-Host "sshd:        $(if ($sshd) { $sshd.Status } else { '未装' })"
-    $frpc = Get-Service frpc -ErrorAction SilentlyContinue
-    Write-Host "frpc:        $(if ($frpc) { $frpc.Status } else { '未装' })"
-    Write-Host "server dir:  $(if (Test-Path $ServerDir) { '在' } else { '不在' })"
-    Write-Host "venv:        $(if (Test-Path "$ServerDir\.venv") { '在' } else { '不在' })"
-    Write-Host "src:         $(if (Test-Path "$ServerDir\src") { '在' } else { '不在' })"
-    Write-Host "authorized_keys: $(if (Test-Path $AkPath) { (Get-Content $AkPath).Count + ' 行' } else { '不在' })"
-    Write-Host "frpc toml:   $(if (Test-Path $FrpcToml) { '在' } else { '不在' })"
-}
 
 function Run-Stage {
     param([int]$N, [scriptblock]$Action, [string]$Name)
@@ -419,67 +486,4 @@ function Show-NextSteps {
     Write-Host "  [外机 — 30s]" -ForegroundColor Cyan
     Write-Host "    3. install-rig-bundle.ps1 -Verify" -ForegroundColor Cyan
     Write-Host "       (5 步: sshd 听 / frpc 在 / VPS:$RemotePort 通 / mcp SDK OK / ssh rig 通)" -ForegroundColor Cyan
-}
-
-# ===== Verify =====
-function Invoke-Verify {
-    Write-Host ""
-    Write-Host "=== Verify (5 步) ===" -ForegroundColor Cyan
-    $results = @()
-
-    Write-Host "[1/5] sshd 听 22 ..." -NoNewline
-    if ((netstat -ano | findstr :22) -match "LISTENING") {
-        Write-Host " ✓" -ForegroundColor Green
-        $results += $true
-    } else {
-        Write-Host " ✗" -ForegroundColor Red
-        $results += $false
-    }
-
-    Write-Host "[2/5] frpc 服务 ..." -NoNewline
-    $svc = Get-Service frpc -ErrorAction SilentlyContinue
-    if ($svc -and $svc.Status -eq "Running") {
-        Write-Host " ✓" -ForegroundColor Green
-        $results += $true
-    } else {
-        Write-Host " ✗" -ForegroundColor Red
-        $results += $false
-    }
-
-    Write-Host "[3/5] VPS $Vps`:$RemotePort TCP ..." -NoNewline
-    try {
-        $tcp = Test-NetConnection -ComputerName $Vps -Port $RemotePort -InformationLevel Quiet -WarningAction SilentlyContinue
-        if ($tcp) { Write-Host " ✓" -ForegroundColor Green; $results += $true }
-        else { Write-Host " ✗" -ForegroundColor Red; $results += $false }
-    } catch {
-        Write-Host " ✗" -ForegroundColor Red
-        $results += $false
-    }
-
-    Write-Host "[4/5] mcp SDK ..." -NoNewline
-    $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import FastMCP; print('OK')" 2>&1
-    if ($ok -match "OK") {
-        Write-Host " ✓" -ForegroundColor Green
-        $results += $true
-    } else {
-        Write-Host " ✗" -ForegroundColor Red
-        $results += $false
-    }
-
-    Write-Host "[5/5] ssh $UserName@$Vps -p $RemotePort (3s probe) ..." -NoNewline
-    $probe = ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -p $RemotePort "$UserName@$Vps" "echo SSH_OK" 2>&1
-    if ($LASTEXITCODE -eq 0 -and $probe -match "SSH_OK") {
-        Write-Host " ⚠ forced command 没截" -ForegroundColor Yellow
-        $results += $false
-    } elseif ($probe -match "Permission denied") {
-        Write-Host " ✗ Permission denied" -ForegroundColor Red
-        $results += $false
-    } else {
-        Write-Host " ✓ (forced command 生效)" -ForegroundColor Green
-        $results += $true
-    }
-
-    $pass = ($results | Where-Object { $_ }).Count
-    Write-Host ""
-    Write-Host "Verify 结果: $pass / 5 通过" -ForegroundColor $(if ($pass -eq 5) { "Green" } else { "Yellow" })
 }
