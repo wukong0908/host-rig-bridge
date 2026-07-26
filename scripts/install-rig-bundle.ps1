@@ -259,12 +259,25 @@ function Write-AuthorizedKeys {
         throw "`$RIG_HOST_PUBKEY 未设. 主人从主机 register-rig 输出复制整行, 设环境变量再跑"
     }
     $akPath = "C:\Users\$UserName\.ssh\authorized_keys"
+    $acct = "$env:COMPUTERNAME\$UserName"
+
+    # 文件已存在且被 icacls 锁成 mcp-rig:SYSTEM only, 当前管理员账号无权写
+    # 临时 takeown + grant 当前管理员 RW, 写完恢复锁
+    if (Test-Path $akPath) {
+        Write-Step "临时 takeown + 放开 RW (写完恢复 icacls 锁)"
+        takeown /F $akPath /A | Out-Null
+        icacls $akPath /grant "${env:USERNAME}:(RW)" | Out-Null
+        Write-StepDone
+    }
+
     Write-Step "Add-Content $akPath"
     Add-Content -Path $akPath -Value $RIG_HOST_PUBKEY -Encoding UTF8
     Write-StepDone
-    $acct = "$env:COMPUTERNAME\$UserName"
+
     Write-Step "icacls authorized_keys (限 $acct:R + SYSTEM:R, 防其他用户读)"
     icacls $akPath /inheritance:r /grant:r "${acct}:(R)" "SYSTEM:(R)" | Out-Null
+    # 拿掉临时 grant
+    icacls $akPath /remove "(${env:COMPUTERNAME}\${env:USERNAME})" 2>&1 | Out-Null
     Write-StepDone
 }
 
