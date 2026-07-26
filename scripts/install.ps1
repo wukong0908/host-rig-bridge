@@ -181,6 +181,12 @@ function Test-Preflight {
 }
 
 Assert-Admin
+
+# === 开始部署提示 ===
+Write-Host ""
+Write-Host ">>> 开始部署 host-rig-bridge <<<" -ForegroundColor Magenta
+Write-Host ""
+
 Test-Preflight
 
 Write-Host "==========================================="
