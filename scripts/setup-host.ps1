@@ -68,11 +68,23 @@ Write-Host "==== forced command 模板 END ====" -ForegroundColor Yellow
 Write-Host ""
 
 Write-Host "下一步 (主人手动):" -ForegroundColor Cyan
-Write-Host "  1. 复制'主机公钥' + 上面'forced command 模板'拼成整行:" -ForegroundColor Cyan
-Write-Host "       $forcedCmd <主机公钥>" -ForegroundColor DarkGray
+Write-Host "  1. 把下面'<FILL_VPS>' / '<FILL_TOKEN>' / '<FILL_PORT>' 替换成真实值 (VPS 用 8.163.106.31, token 同家里 frpc, port 选 6001)" -ForegroundColor Cyan
+Write-Host "  2. 整段复制到外机 (管理员 PowerShell) 粘贴跑" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  2. 去每台外机 (管理员 PowerShell) 跑 install-rig-bundle, 带 `$RIG_HOST_PUBKEY=<上面整行>" -ForegroundColor Cyan
+Write-Host "==== 外机一键命令 BEGIN (复制以下整段到外机) ====" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  3. 外机装完后, 回主机跑 register-rig 加外机:" -ForegroundColor Cyan
+Write-Host ('$env:RIG_VPS         = ''<FILL_VPS>''')
+Write-Host ('$env:RIG_FRP_TOKEN   = ''<FILL_TOKEN>''')
+Write-Host ('$env:RIG_REMOTE_PORT = ''<FILL_PORT>''')
+Write-Host ('$env:RIG_HOST_PUBKEY = ''{0} {1}''' -f $forcedCmd, $pubKey.Trim())
+Write-Host ""
+Write-Host "iex (iwr -useb 'https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install-rig-bundle.ps1').Content"
+Write-Host ""
+Write-Host "==== 外机一键命令 END ====" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "外机跑完后 (10 min), 回主机加外机:" -ForegroundColor Cyan
 Write-Host "       pwsh scripts/register-rig.ps1 -RigAlias <alias> -RigHost <VPS> -RigPort <port> -RigUser mcp-rig" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "模板 (每加一台外机, 替换 <FILL_PORT>):" -ForegroundColor DarkGray
+Write-Host "       rig1: 6001    rig2: 6002    rig3: 6003 ..." -ForegroundColor DarkGray
 Write-Host ""
