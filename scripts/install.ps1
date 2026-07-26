@@ -8,6 +8,7 @@
 #
 # 必传: -UserName / -ServerDir / -Sandbox (路径不固定, 防误装)
 # 选传: -GitToken (私有仓 clone 需 PAT)
+# 选传: -AutoInstall (缺依赖直接 winget 装, 不问)
 #
 # 行为:
 #   0. Preflight 体检 (pwsh / python / git / OpenSSH / 网络)
@@ -31,7 +32,9 @@ param(
     [Parameter(Mandatory)]
     [string]$Sandbox,
     # PAT 走 clone (private repo iwr | bash 拿不到 raw URL; 主人在自己机手输)
-    [string]$GitToken = ""
+    [string]$GitToken = "",
+    # 缺啥自动装 (pwsh / python / git), 用户确认后才执行
+    [switch]$AutoInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,21 +96,80 @@ function Test-Preflight {
 
     $missing = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" } | ForEach-Object { $_.Key }
     # openssh 缺可自动装 (stage 6), 不算 fatal
-    if ($missing -contains "python") {
-        Write-Error "缺 Python — 装: winget install --id Python.Python.3.13 -e   (3.13 当前 stable latest, 后续 winget upgrade 跟新)"
-    }
-    if ($missing -contains "git") {
-        Write-Error "缺 git — 装: winget install --id Git.Git -e"
-    }
     if ($missing -contains "internet") {
         Write-Error "无网络 (github.com 不可达), 检查代理/DNS"
-    }
-    if ($missing -contains "pwsh") {
-        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
+        throw "Preflight 失败: 无网络"
     }
 
-    if ($missing -match "python|git|internet") {
-        throw "Preflight 失败, 请先补齐上面缺失项再跑"
+    # 可自动装的映射
+    $installMap = [ordered]@{
+        python = @{ Id = "Python.Python.3.13"; Name = "Python 3.13 (latest stable)" }
+        git    = @{ Id = "Git.Git";          Name = "Git for Windows" }
+        pwsh   = @{ Id = "Microsoft.PowerShell"; Name = "PowerShell 7" }
+    }
+    $toInstall = @($missing | Where-Object { $installMap.Contains($_) })
+
+    if ($toInstall.Count -gt 0) {
+        Write-Host ""
+        Write-Host "=== 缺失项 ===" -ForegroundColor Yellow
+        foreach ($k in $toInstall) {
+            Write-Host "  - $($installMap[$k].Name) (winget id: $($installMap[$k].Id))" -ForegroundColor Yellow
+        }
+        Write-Host ""
+
+        if (-not $AutoInstall) {
+            $ans = Read-Host "是否自动装以上缺失项? (y/N)"
+            if ($ans -notmatch '^(y|yes|Y)') {
+                Write-Error "用户拒绝自动装, 请手动装后重跑, 或加 -AutoInstall 跳过确认"
+                throw "Preflight 失败: 缺依赖, 用户拒绝自动装"
+            }
+        }
+
+        foreach ($k in $toInstall) {
+            $pkg = $installMap[$k]
+            Write-Host ""
+            Write-Host ">>> winget install --id $($pkg.Id) -e --source winget" -ForegroundColor Cyan
+            $proc = Start-Process -FilePath "winget" `
+                -ArgumentList @("install", "--id", $pkg.Id, "-e", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements") `
+                -Wait -PassThru -NoNewWindow
+            if ($proc.ExitCode -ne 0) {
+                throw "winget install $($pkg.Id) 退出 $($proc.ExitCode)"
+            }
+            Write-Host "    ✓ $($pkg.Name) 装好" -ForegroundColor Green
+        }
+
+        # 重检 (PATH 新装程序需新会话才生效; 提示重开 PowerShell)
+        Write-Host ""
+        Write-Host "=== 装完重检 (新装可能需重开 PowerShell 才生效) ===" -ForegroundColor Cyan
+        foreach ($k in $installMap.Keys) {
+            $stillMissing = $true
+            if ($k -eq "python") {
+                $py = Get-Command py.exe -ErrorAction SilentlyContinue
+                $pyAbs = "C:\Users\$UserName\AppData\Local\Python\bin\python.exe"
+                if ($py -or (Test-Path $pyAbs)) { $stillMissing = $false }
+            } elseif ($k -eq "git") {
+                if (Get-Command git -ErrorAction SilentlyContinue) { $stillMissing = $false }
+            } elseif ($k -eq "pwsh") {
+                if ($PSVersionTable.PSVersion.Major -ge 7) { $stillMissing = $false; $stillMissing = $false }
+                $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+                if ($pwshCmd) { $stillMissing = $false }
+            }
+            $report[$k] = -not $stillMissing
+            $mark = if ($report[$k]) { "✓" } else { "✗" }
+            $color = if ($report[$k]) { "Green" } else { "Red" }
+            Write-Host ("  {0} {1}" -f $mark, $k) -ForegroundColor $color
+        }
+
+        $stillBad = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" -and $_.Key -ne "internet" } | ForEach-Object { $_.Key }
+        if ($stillBad.Count -gt 0) {
+            Write-Host ""
+            Write-Warning "仍有缺失: $($stillBad -join ', '). 通常需重开 PowerShell 让 PATH 生效后重跑 install.ps1"
+            throw "Preflight 失败: 装后仍缺 $($stillBad -join ', '). 重开管理员 PowerShell 再跑"
+        }
+    }
+
+    if ($missing -match "pwsh") {
+        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
     }
 }
 
