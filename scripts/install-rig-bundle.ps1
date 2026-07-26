@@ -494,6 +494,46 @@ function Invoke-Verify {
     }
 }
 
+# ===== 整体检测: 全装完就不重跑 =====
+function Test-AlreadyDeployed {
+    # 6 个关键点: sshd listen / 账号在 / server+venv+src 在 / authorized_keys 在 / frpc 在 / toml 在
+    $checks = @(
+        @{ Name = "sshd 服务";        Test = { (Get-Service sshd -ErrorAction SilentlyContinue) -ne $null } }
+        @{ Name = "sshd listen 22";   Test = { (netstat -ano | findstr :22) -match "LISTENING" } }
+        @{ Name = "mcp-rig 账号";     Test = { Get-LocalUser -Name mcp-rig -ErrorAction SilentlyContinue } }
+        @{ Name = "server dir";       Test = { Test-Path "C:\Users\mcp-rig\mcp-server" } }
+        @{ Name = "venv";             Test = { Test-Path "C:\Users\mcp-rig\mcp-server\.venv\Scripts\python.exe" } }
+        @{ Name = "src clone";        Test = { Test-Path "C:\Users\mcp-rig\mcp-server\src\.git" } }
+        @{ Name = "authorized_keys";  Test = { Test-Path "C:\Users\mcp-rig\.ssh\authorized_keys" } }
+        @{ Name = "frpc 服务";        Test = { (Get-Service frpc -ErrorAction SilentlyContinue) -ne $null } }
+        @{ Name = "frpc.toml";        Test = { Test-Path "C:\frp\frpc.toml" } }
+    )
+    $missing = @()
+    foreach ($c in $checks) {
+        $ok = & $c.Test
+        if (-not $ok) { $missing += $c.Name }
+    }
+    if ($missing.Count -eq 0) {
+        # 全 OK, 早返回
+        Write-Host ""
+        Write-Host "✓ 外机已就绪 (9 项全过):" -ForegroundColor Green
+        foreach ($c in $checks) {
+            Write-Host "    ✓ $($c.Name)" -ForegroundColor DarkGray
+        }
+        Write-Host ""
+        Write-Host "无需 deploy. 如需重做某项, 跑 install-rig-bundle.ps1 -Status 看详情" -ForegroundColor Cyan
+        Write-Host "如想强制全跑, 删 .venv / src / authorized_keys / C:\frp 后再跑" -ForegroundColor DarkGray
+        Write-Host ""
+        Show-NextSteps
+        return $true
+    }
+    Write-Host ""
+    Write-Host "✗ 外机未就绪, 缺 $($missing.Count) 项: $($missing -join ', ')" -ForegroundColor Yellow
+    Write-Host "    (缺的项会被下面 stage 自动装, 不会全量重跑)" -ForegroundColor DarkGray
+    Write-Host ""
+    return $false
+}
+
 # ===== Status =====
 function Show-Status {
     Write-Host "=== 当前状态 ===" -ForegroundColor Cyan
@@ -535,6 +575,11 @@ if (-not $RIG_VPS -or -not $RIG_FRP_TOKEN -or -not $RIG_REMOTE_PORT -or -not $RI
 }
 
 Test-Preflight
+# 整体检测: 全装完就早返回, 不重跑 9 stage
+if (Test-AlreadyDeployed) {
+    return
+}
+
 Install-OpenSsh
 New-McpUser
 New-Dirs
