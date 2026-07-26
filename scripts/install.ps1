@@ -119,11 +119,13 @@ function Test-Preflight {
         Write-Host ""
 
         if (-not $AutoInstall) {
-            $ans = Read-Host "是否自动装以上缺失项? (y/N)"
-            if ($ans -notmatch '^(y|yes|Y)') {
-                Write-Error "用户拒绝自动装, 请手动装后重跑, 或加 -AutoInstall 跳过确认"
-                throw "Preflight 失败: 缺依赖, 用户拒绝自动装"
+            # Read-Host 不能在管道流下用 (Tee-Object 会卡住), 走 stderr + exit 1
+            [Console.Error]::WriteLine("")
+            [Console.Error]::WriteLine("缺依赖, 加 -AutoInstall 自动装, 或手动装后重跑:")
+            foreach ($k in $toInstall) {
+                [Console.Error]::WriteLine("  winget install --id $($installMap[$k].Id) -e --source winget")
             }
+            throw "Preflight 失败: 缺依赖, 加 -AutoInstall 自动装"
         }
 
         foreach ($k in $toInstall) {
