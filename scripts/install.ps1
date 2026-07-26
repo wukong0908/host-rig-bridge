@@ -93,13 +93,23 @@ if (Test-Path "$ServerDir\src\.git") {
 # 4. venv + pip
 Write-Stage 4 7 "建 venv + 装 mcp[server]"
 if (-not (Test-Path "$ServerDir\.venv")) {
-    # 用绝对路径避免 SYSTEM 上下文 PATH 找不到
-    $pyLauncher = "$env:SystemRoot\py.exe"
-    if (Test-Path $pyLauncher) {
-        & $pyLauncher -3 -m venv "$ServerDir\.venv"
-    } else {
-        python -m venv "$ServerDir\.venv"
+    # 三种探测, 任一可用: py 启动器 / python 绝对路径 / PATH python
+    $py = $null
+    $pyLaunch = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($pyLaunch) { $py = @{ Path = $pyLaunch.Source; Arg = "-3" } }
+    if (-not $py) {
+        $pyAbs = "C:\Users\$UserName\AppData\Local\Python\bin\python.exe"
+        if (Test-Path $pyAbs) { $py = @{ Path = $pyAbs; Arg = "" } }
     }
+    if (-not $py) {
+        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pyCmd) { $py = @{ Path = $pyCmd.Source; Arg = "" } }
+    }
+    if (-not $py) {
+        throw "找不到 Python: 装 py 启动器 (winget install Python.Python.3.13) 或本地 Python"
+    }
+    Write-Host "    用 $($py.Path) $($py.Arg)"
+    & $py.Path $py.Arg -m venv "$ServerDir\.venv"
 }
 & "$ServerDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
 & "$ServerDir\.venv\Scripts\python.exe" -m pip install "$ServerDir\src\server" --quiet
