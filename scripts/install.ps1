@@ -258,3 +258,6 @@ Write-Host ""
 Write-Host "  3. 主机首次 SSH 验握手:" -ForegroundColor Yellow
 Write-Host "       ssh -o StrictHostKeyChecking=accept-new $UserName@<rig-host>" -ForegroundColor Yellow
 Write-Host "  4. 重启主机 Claude Code, /mcp 看 rig connected." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "出错留日志 (兼容 PS 5.1 + pwsh 7, *>&1 是 7 才支持):" -ForegroundColor Yellow
+Write-Host "   .\install.ps1 ...args... 2>&1 | Tee-Object -FilePath C:\install.log" -ForegroundColor Yellow
