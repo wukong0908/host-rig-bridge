@@ -18,8 +18,7 @@
 param(
     [switch]$Verify,
     [switch]$Status,
-    [switch]$Force,
-    [switch]$Verbose
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
