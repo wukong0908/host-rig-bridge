@@ -47,7 +47,7 @@ async def start_task(
         "pid": 12345,
         "state": "running",
         "started_at": "2026-07-26T14:30:22Z",
-        "log_path": "/home/mcp-rig/mcp-server/tasks/ts-20260726-143022-a1b2c3/",
+        "log_path": "C:/Users/mcp-rig/mcp-server/tasks/ts-20260726-143022-a1b2c3/",
         "cmd_audit": "iverilog -o ... blink.v"   # 仅头 80 字 + hash[:16]
       }
     """
@@ -57,7 +57,7 @@ async def start_task(
 1. argv 白名单校验(复用 sandbox.py)
 2. 生成 task_id: `ts-YYYYMMDD-HHMMSS-<6位hex>`
 3. tasks.db INSERT(state=running, pid=NULL, cmd_hash)
-4. 建目录 `/home/mcp-rig/mcp-server/tasks/<id>/`
+4. 建目录 `C:/Users/mcp-rig/mcp-server/tasks/<id>/`
 5. `asyncio.create_subprocess_exec` → Popen, stdout/stderr tee 到 `stdout.log` / `stderr.log`
 6. 后台 `asyncio.create_task(watcher)` 监听进程退出 → UPDATE state=exited/<rc>
 7. 立即返回(不阻塞)
@@ -170,7 +170,7 @@ async def task_output_stream(
 
 ## 四、sqlite schema
 
-文件: `/home/mcp-rig/mcp-server/tasks.db`, mode `0600`, owner `mcp-rig:mcp-rig`
+文件: `C:/Users/mcp-rig/mcp-server/tasks.db`, mode `0600`, owner `mcp-rig:mcp-rig`
 
 ```sql
 CREATE TABLE tasks (
@@ -185,7 +185,7 @@ CREATE TABLE tasks (
     started_at   TEXT NOT NULL,              -- ISO 8601 UTC
     ended_at     TEXT,
     timeout      INTEGER NOT NULL,           -- 秒
-    log_dir      TEXT NOT NULL,              -- /home/mcp-rig/mcp-server/tasks/<id>/
+    log_dir      TEXT NOT NULL,              -- C:/Users/mcp-rig/mcp-server/tasks/<id>/
     stdout_bytes INTEGER DEFAULT 0,
     stderr_bytes INTEGER DEFAULT 0
 );
@@ -196,7 +196,7 @@ CREATE INDEX idx_tasks_started_at ON tasks(started_at DESC);
 
 **手工查询**:
 ```bash
-sqlite3 /home/mcp-rig/mcp-server/tasks.db \
+sqlite3 C:/Users/mcp-rig/mcp-server/tasks.db \
   "SELECT task_id, state, rc, started_at, ended_at FROM tasks ORDER BY started_at DESC LIMIT 10"
 ```
 

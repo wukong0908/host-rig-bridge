@@ -16,7 +16,7 @@
 3. **进度追踪义务**。每次 commit / 阶段切换 / 完成度变化 → 同步 `plans/进度追踪.md`。变更日志加新行。
 4. **入仓白名单**:`docs/` / `server/` / `scripts/` / `frp/` / `watchdog/` / `examples/` / `README.md` / `CLAUDE.md` / `LICENSE` / `plans/` / `rigs.yaml` / `rigs.local.yaml.example` / `.gitignore`。
 5. **入仓黑名单**(写入 `.gitignore`):`*.key` / `*.pub` / `**/.env*` / `**/__pycache__/` / `**/.venv/` / `**/*.bak*` / `**/tmp_*.ps1` / `rigs.local.yaml`(主人私有清单)。
-6. **路径硬编码禁止**。所有外机路径(`/home/mcp-rig/...`)/主机路径(`$HOME\.ssh\...`)必须通过 `rigs.local.yaml` 或环境变量注入。
+6. **路径硬编码禁止**。所有外机路径(`C:/Users/mcp-rig/...`)/主机路径(`$HOME\.ssh\...`)必须通过 `rigs.local.yaml` 或环境变量注入。
 7. **PowerShell 调用**: pwsh 7 走 `-File` 模式, 临时 ps1 用 `C:\Users\WuKong\.claude\scripts\tmp_<task>_<ts>.ps1`, 跑完即删。
 8. **Python 调用**: 主机绝对路径 `C:/Users/WuKong/AppData/Local/Python/bin/python.exe`, 外机 venv 用 `/home/<rig-user>/mcp-server/.venv/bin/python`。
 9. **变更 review**: 任何 `server/server.py` 改动必须先经 `cavecrew-reviewer` 走一轮(参考 2026-07-26 v1 8🔴 教训)。

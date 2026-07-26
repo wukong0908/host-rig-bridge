@@ -4,14 +4,14 @@
       "command": "ssh",
       "args": [
         "-T", "rig",
-        "/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py"
+        "C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -u C:/Users/mcp-rig/mcp-server/src/server/server.py"
       ]
     },
     "rig-build-2": {
       "command": "ssh",
       "args": [
         "-T", "rig-build-2",
-        "/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py"
+        "C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -u C:/Users/mcp-rig/mcp-server/src/server/server.py"
       ]
     }
   }

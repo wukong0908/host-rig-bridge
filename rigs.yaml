@@ -12,30 +12,28 @@ default_rig: rig
 rigs:
   - alias: rig
     host: 192.168.x.x                 # ← 改: 外机 IP
-    user: mcp-rig
+    user: mcp-rig                     # Windows 本地账号名
     key: ~/.ssh/id_claude_mcp
-    sandbox: /home/mcp-rig/projects
-    server: /home/mcp-rig/mcp-server/server.py
-    venv: /home/mcp-rig/mcp-server/.venv
+    sandbox: C:/Users/mcp-rig/projects             # 路径沙箱根
+    server: C:/Users/mcp-rig/mcp-server/src/server/server.py
+    venv: C:/Users/mcp-rig/mcp-server/.venv
     capabilities: [sync, async]
     tools:
       - iverilog
       - vvp
       - quartus_sh
       - openFPGALoader
-      - ls
     notes: "实验室装机机 (示例, 主人按需修改)"
 
   - alias: rig-build-2
     host: 192.168.x.y
     user: mcp-rig
     key: ~/.ssh/id_claude_mcp
-    sandbox: /home/mcp-rig/projects
-    server: /home/mcp-rig/mcp-server/server.py
-    venv: /home/mcp-rig/mcp-server/.venv
+    sandbox: C:/Users/mcp-rig/projects
+    server: C:/Users/mcp-rig/mcp-server/src/server/server.py
+    venv: C:/Users/mcp-rig/mcp-server/.venv
     capabilities: [sync]            # 仅同步, 不开异步
     tools:
       - iverilog
       - vvp
-      - ls
     notes: "备用编译机 (示例)"

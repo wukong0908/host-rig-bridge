@@ -18,9 +18,9 @@ rigs:                               # 必填, 数组
     host: 192.168.x.x               # 必填, IP 或域名
     user: mcp-rig                   # 必填, 分机账号
     key: ~/.ssh/id_claude_mcp       # 必填, 主机私钥路径
-    sandbox: /home/mcp-rig/projects # 必填, 路径沙箱根
-    server: /home/mcp-rig/mcp-server/server.py  # 必填, server.py 绝对路径
-    venv: /home/mcp-rig/mcp-server/.venv         # 必填, venv bin 路径
+    sandbox: C:/Users/mcp-rig/projects # 必填, 路径沙箱根
+    server: C:/Users/mcp-rig/mcp-server/src/server/server.py  # 必填, server.py 绝对路径
+    venv: C:/Users/mcp-rig/mcp-server/.venv         # 必填, venv bin 路径
 
     capabilities: [sync, async]     # 可选, 默认 [sync]
                                    # sync  → run_command / read_file / write_file / delete_file / list_dir / mkdir
@@ -55,7 +55,7 @@ rigs:                               # 必填, 数组
 ### `user`(必填)
 
 - 分机账号名(典型 `mcp-rig`)
-- **必须**是 nologin + forced command 配过的账号
+- **必须**是 Windows 本地账号 + OpenSSH forced command 配过的账号
 - 多账号不同权限 → 多个 rig 条目, alias 加后缀(`rig` / `rig-debug`)
 
 ### `key`(必填)
@@ -68,19 +68,19 @@ rigs:                               # 必填, 数组
 
 - 路径沙箱根, 绝对路径, **不要**带尾部 `/`
 - server.py 校验所有路径 `os.path.relpath` 在此目录之下
-- 典型 `/home/mcp-rig/projects`
+- 典型 `C:/Users/mcp-rig/projects`
 
 ### `server`(必填)
 
 - server.py 绝对路径
-- 典型 `/home/mcp-rig/mcp-server/server.py`
-- 由 `install.sh` 自动布置
+- 典型 `C:/Users/mcp-rig/mcp-server/src/server/server.py`
+- 由 `install.ps1` 自动布置
 
 ### `venv`(必填)
 
 - venv bin 路径(放 `python -u`)
-- 典型 `/home/mcp-rig/mcp-server/.venv`
-- 由 `install.sh` 自动布置
+- 典型 `C:/Users/mcp-rig/mcp-server/.venv`
+- 由 `install.ps1` 自动布置
 
 ### `capabilities`(可选, 默认 `[sync]`)
 
@@ -165,9 +165,9 @@ setup-host.ps1 现在等价于 `register-rig.ps1 -RigAlias rig -RigHost <ip> -Ri
    ```
 
 2. **追加到外机 authorized_keys**(老 key 不删):
-   ```bash
-   # 外机 root
-   sudo -u mcp-rig tee -a /home/mcp-rig/.ssh/authorized_keys <<< '<新公钥>'
+   ```powershell
+   # 外机管理员 PowerShell
+   Add-Content -Path C:/Users/mcp-rig/.ssh/authorized_keys -Value '<新公钥>'
    ```
 
 3. **测通**(确保新 key 可登):
@@ -178,9 +178,9 @@ setup-host.ps1 现在等价于 `register-rig.ps1 -RigAlias rig -RigHost <ip> -Ri
 4. **切换主机默认 key**(`register-rig.ps1` 加 `-RigKey <新key路径>` 重跑, 或直接改 yaml 的 `key` 字段)。
 
 5. **老 key 从外机删**:
-   ```bash
-   # 外机 root
-   sudo -u mcp-rig sed -i '/2026H1/d' /home/mcp-rig/.ssh/authorized_keys
+   ```powershell
+   # 外机管理员 PowerShell (Get-Content -Replace 替代 sed)
+   (Get-Content C:/Users/mcp-rig/.ssh/authorized_keys) | Where-Object { $_ -notmatch '2026H1' } | Set-Content C:/Users/mcp-rig/.ssh/authorized_keys
    ```
 
 6. **主机本地删**:

@@ -1,12 +1,10 @@
-# authorized_keys 模板 (主机公钥 + forced command)
-# 用法: 整行粘贴到 /home/mcp-rig/.ssh/authorized_keys (外机 mcp-rig 账号)
-#      或粘到 C:\ProgramData\ssh\administrators_authorized_keys (主机管理员账户)
+# authorized_keys 模板 (Windows 外机版)
+# 用法: 整行粘贴到 C:\Users\mcp-rig\.ssh\authorized_keys (外机 mcp-rig 账号)
+# 注意 Windows OpenSSH 路径必须是 authorized_keys, 不是 .ssh/authorized_keys 别名
 
-# ===== 主机一把 key, 推到 mcp-rig 账号 (场景 1/3 MCP) =====
-command="/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...主机公钥...
-
-# 多个分机账号(mcp-rig-debug 等无 forced command 的临时调试账号):
-# ssh-ed25519 AAAA...主机公钥...
+# ===== 外机 mcp-rig 账号 (场景 1/3 MCP) =====
+# forced command 锁死只能跑 MCP server, 不开 shell
+command="C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -u C:/Users/mcp-rig/mcp-server/src/server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...主机公钥...
 
 # ===== 主机管理员 authorized_keys (场景 2 反向 SSH) =====
 # 注意: 管理员账户只认 administrators_authorized_keys, 不看 ~/.ssh/authorized_keys

@@ -1,6 +1,6 @@
 """tasks_store.py — 异步任务 sqlite 持久化.
 
-单文件 /home/mcp-rig/mcp-server/tasks.db, mode 0600.
+单文件 C:/Users/mcp-rig/mcp-server/tasks.db, mode 0600.
 server 重启不丢任务, 可手工 sqlite3 查.
 """
 from __future__ import annotations
@@ -10,10 +10,10 @@ import sqlite3
 from pathlib import Path
 
 DB_PATH = os.environ.get(
-    "HRB_TASKS_DB", "/home/mcp-rig/mcp-server/tasks.db"
+    "HRB_TASKS_DB", "C:/Users/mcp-rig/mcp-server/tasks.db"
 )
 TASKS_DIR = os.environ.get(
-    "HRB_TASKS_DIR", "/home/mcp-rig/mcp-server/tasks"
+    "HRB_TASKS_DIR", "C:/Users/mcp-rig/mcp-server/tasks"
 )
 
 

@@ -23,7 +23,9 @@ param(
     [string]$KeyPath = "$HOME\.ssh\id_claude_mcp",
     [string]$ConfigPath = "$HOME\.ssh\config",
     [string]$ClaudeCfg = "$HOME\.claude.json",
-    [string]$RigsYaml = (Join-Path $HOME ".claude\host-rig-bridge\rigs.local.yaml")
+    [string]$RigsYaml = (Join-Path $HOME ".claude\host-rig-bridge\rigs.local.yaml"),
+    [string]$ServerPath = "C:/Users/mcp-rig/mcp-server/src/server/server.py",
+    [string]$VenvDir = "C:/Users/mcp-rig/mcp-server/.venv"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,8 +54,8 @@ if ($RigAlias) {
         user = if ($RigUser) { $RigUser } elseif ($fromYaml) { $fromYaml.user } else { "" }
         key  = if ($RigKey)  { Expand-HomePath $RigKey } elseif ($fromYaml -and $fromYaml.key) { $fromYaml.key } else { $KeyPath }
         sandbox = if ($RigSandbox) { $RigSandbox } elseif ($fromYaml) { $fromYaml.sandbox } else { "" }
-        server  = if ($RigServer)  { $RigServer } elseif ($fromYaml) { $fromYaml.server } else { "/home/mcp-rig/mcp-server/server.py" }
-        venv    = if ($RigVenv)    { $RigVenv } elseif ($fromYaml) { $fromYaml.venv } else { "/home/mcp-rig/mcp-server/.venv" }
+        server  = if ($RigServer)  { $RigServer } elseif ($fromYaml) { $fromYaml.server } else { $ServerPath }
+        venv    = if ($RigVenv)    { $RigVenv } elseif ($fromYaml) { $fromYaml.venv } else { $VenvDir }
     }
     if (-not $r.host -or -not $r.user) {
         throw "rig '$RigAlias' host/user 缺, 在 rigs.local.yaml 也没找到. 用 -RigHost / -RigUser 命令行覆盖"
@@ -96,7 +98,7 @@ foreach ($r in $targets) {
     Write-Host "[4/5] 写 MCP 配置到 ~/.claude.json (mcpServers.$($r.alias))"
     $rigArgs = @(
         "-T", $r.alias,
-        "$($r.venv)/bin/python -u $($r.server)"
+        "$($r.venv)/Scripts/python.exe -u $($r.server)"
     )
     Add-McprigServer -ClaudeCfg $ClaudeCfg -Alias $r.alias -Args $rigArgs
     Write-Host "    mcpServers.$($r.alias) 已注入"
@@ -111,10 +113,10 @@ Write-Host "---- 主机公钥 END ----"
 Write-Host ""
 Write-Host "下一步 (每台 rig):" -ForegroundColor Yellow
 Write-Host "  1. 把上面公钥贴到外机 $($targets[0].host) authorized_keys:" -ForegroundColor Yellow
-Write-Host "     外机 root 跑:" -ForegroundColor Yellow
+Write-Host "     外机 (管理员 PowerShell):" -ForegroundColor Yellow
 foreach ($r in $targets) {
-    $cmd = "command=`"$($r.venv)/bin/python -u $($r.server)`",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $($pubKey.Trim())"
-    Write-Host "       sudo -u $($r.user) tee -a /home/$($r.user)/.ssh/authorized_keys <<< '$cmd'" -ForegroundColor Yellow
+    $cmd = "command=`"$($r.venv)/Scripts/python.exe -u $($r.server)`",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $($pubKey.Trim())"
+    Write-Host "       Add-Content -Path C:\Users\$($r.user)\.ssh\authorized_keys -Value '$cmd'" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  2. 首次 SSH 验握手 (rig '$($r.alias)'):" -ForegroundColor Yellow
     Write-Host "       ssh -o StrictHostKeyChecking=accept-new $($r.alias)" -ForegroundColor Yellow

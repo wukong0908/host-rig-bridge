@@ -15,24 +15,32 @@ import time
 from pathlib import Path
 
 # ===== 配置 (单一真相源) =====
-SANDBOX = os.environ.get("HRB_SANDBOX", "/home/mcp-rig/projects")
-LOG_PATH = os.environ.get("HRB_LOG_PATH", "/home/mcp-rig/mcp-server/access.log")
+SANDBOX = os.environ.get("HRB_SANDBOX", "C:/Users/mcp-rig/projects")
+LOG_PATH = os.environ.get("HRB_LOG_PATH", "C:/Users/mcp-rig/mcp-server/access.log")
 
 # 白名单: 仅可执行文件绝对路径(防 PATH 劫持).
+# Windows 外机: OpenSSH 把路径转成 /c/.../...exe 或 C:\\...\\...exe, 两种都收.
+# .exe 后缀走 basename 校验后允许.
 # 注意: ls 不在白名单 — 列目录走 list_dir(), 不在 run_command 暴露.
 WHITELIST = {
-    "iverilog": "/usr/bin/iverilog",
-    "vvp": "/usr/bin/vvp",
-    "quartus_sh": "/opt/quartus/bin/quartus_sh",  # TODO: 按外机 datasheet/实测, 勿硬编码
-    "openFPGALoader": "/usr/local/bin/openFPGALoader",
+    "iverilog": os.environ.get("HRB_IVERILOG", "C:/iverilog/bin/iverilog.exe"),
+    "iverilog.exe": os.environ.get("HRB_IVERILOG", "C:/iverilog/bin/iverilog.exe"),
+    "vvp": os.environ.get("HRB_VVP", "C:/iverilog/bin/vvp.exe"),
+    "vvp.exe": os.environ.get("HRB_VVP", "C:/iverilog/bin/vvp.exe"),
+    "quartus_sh": os.environ.get("HRB_QUARTUS_SH", "C:/altera/quartus/bin64/quartus_sh.exe"),  # TODO: 按外机 datasheet/实测
+    "quartus_sh.exe": os.environ.get("HRB_QUARTUS_SH", "C:/altera/quartus/bin64/quartus_sh.exe"),
+    "openFPGALoader": os.environ.get("HRB_OPENFPGALOADER", "C:/openFPGALoader/openFPGALoader.exe"),
+    "openFPGALoader.exe": os.environ.get("HRB_OPENFPGALOADER", "C:/openFPGALoader/openFPGALoader.exe"),
 }
 
 # 净化 env: 仅注入必要变量, 阻 LD_PRELOAD / PYTHONPATH / LD_LIBRARY_PATH.
+# Windows 下 PYTHONPATH 也是注入攻击面, 一并删.
 SANE_ENV = {
-    "PATH": "/usr/bin:/usr/local/bin:/opt/quartus/bin",
-    "HOME": "/home/mcp-rig",
+    "PATH": os.environ.get("HRB_PATH", "C:/Windows/System32;C:/Windows;C:/iverilog/bin;C:/altera/quartus/bin64;C:/openFPGALoader"),
+    "SYSTEMROOT": os.environ.get("SYSTEMROOT", "C:/Windows"),
+    "USERPROFILE": "C:/Users/mcp-rig",
+    "TEMP": "C:/Users/mcp-rig/AppData/Local/Temp",
     "LANG": "C.UTF-8",
-    "LC_ALL": "C.UTF-8",
     # TODO: quartus_sh 需要 QUARTUS_ROOTDIR / LM_LICENSE_FILE,
     #       需主人提供外机实测路径(CLAUDE.md 硬规则: datasheet/实测来源).
 }
@@ -74,7 +82,7 @@ def get_async_sema() -> asyncio.Semaphore:
 
 # ===== 路径校验 =====
 def in_sandbox(path: str) -> bool:
-    """检查路径在沙箱内. 防前缀匹配绕过(/home/mcp-rig/projects_evil)."""
+    """检查路径在沙箱内. 防前缀匹配绕过(C:/Users/mcp-rig/projects_evil)."""
     try:
         real = os.path.realpath(path)
         base = os.path.realpath(SANDBOX)
@@ -152,9 +160,9 @@ def validate_argv(cmd: str) -> list[str]:
 
     ⚠️ WARNING: 仅校验 argv[0] 名称, argv[1:] 的路径参数不校验.
        白名单二进制自身的参数可逃逸沙箱:
-       - iverilog -o /etc/cron.d/evil   (写沙箱外)
-       - quartus_sh -t /tmp/evil.tcl   (任意 Tcl 执行)
-       - vvp -M /path/to/plugin         (插件路径)
+       - iverilog -o C:/Windows/System32/evil   (写沙箱外)
+       - quartus_sh -t C:/Users/admin/evil.tcl  (任意 Tcl 执行)
+       - vvp -M /path/to/plugin                  (插件路径)
        主人电脑单用户场景下风险可接受, 部署到多用户机需加 bwrap/seccomp/argv 子命令白名单.
 
     返回: 已替换 argv[0] 为绝对路径的列表.
@@ -164,9 +172,14 @@ def validate_argv(cmd: str) -> list[str]:
     if not argv:
         raise ValueError("empty command")
     head = os.path.basename(argv[0])
-    if head not in WHITELIST:
+    # Windows: OpenSSH 收到 "iverilog" / "iverilog.exe" / "C:/iverilog/bin/iverilog.exe" 都行
+    head_exe = head if head.lower().endswith(".exe") else head + ".exe"
+    if head in WHITELIST:
+        argv[0] = WHITELIST[head]
+    elif head_exe in WHITELIST:
+        argv[0] = WHITELIST[head_exe]
+    else:
         raise PermissionError(f"command not allowed: {head}")
-    argv[0] = WHITELIST[head]
     return argv
 
 

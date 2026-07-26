@@ -27,16 +27,16 @@
 ### 典型流程(从主机 Claude 端)
 
 ```
-主人: "帮我把 /home/mcp-rig/projects/fpga/blink.v 用 iverilog 编译, 输出 vvp"
+主人: "帮我把 C:/Users/mcp-rig/projects/fpga/blink.v 用 iverilog 编译, 输出 vvp"
 
 主机 Claude:
-  1. write_file("/home/mcp-rig/projects/fpga/blink.v", <verilog 源码>)
-  2. run_command("iverilog -o /home/mcp-rig/projects/fpga/blink.vvp /home/mcp-rig/projects/fpga/blink.v")
+  1. write_file("C:/Users/mcp-rig/projects/fpga/blink.v", <verilog 源码>)
+  2. run_command("iverilog -o C:/Users/mcp-rig/projects/fpga/blink.vvp C:/Users/mcp-rig/projects/fpga/blink.v")
      → 返回 {"rc": 0, "stdout": "", "stderr": ""} 或错误
   3. 主人: "跑 vvp 仿真"
-     → run_command("vvp /home/mcp-rig/projects/fpga/blink.vvp")
+     → run_command("vvp C:/Users/mcp-rig/projects/fpga/blink.vvp")
   4. 主人: "烧到板子"
-     → run_command("openFPGALoader -b cy10_eval kit /home/mcp-rig/projects/fpga/blink.vvp")
+     → run_command("openFPGALoader -b cy10_eval kit C:/Users/mcp-rig/projects/fpga/blink.vvp")
 ```
 
 ### 限制与坑
@@ -51,10 +51,10 @@
 
 ```
 ssh <rig>                                           # 登入分机(mcp-rig-debug 账号)
-ls -la /home/mcp-rig/mcp-server/                    # 看 server.py 状态
-tail -f /home/mcp-rig/mcp-server/access.log         # 看审计日志(去敏感)
+ls -la C:/Users/mcp-rig/mcp-server/                    # 看 server.py 状态
+tail -f C:/Users/mcp-rig/mcp-server/access.log         # 看审计日志(去敏感)
 pgrep -af server.py                                  # 看进程在不在
-/home/mcp-rig/mcp-server/.venv/bin/python -c \
+C:/Users/mcp-rig/mcp-server/.venv/bin/python -c \
   "from mcp.server.fastmcp import FastMCP; print('OK')"  # 验 SDK
 ```
 
@@ -185,13 +185,13 @@ sshd 配置改了:
 主人: "在分机上跑一个 Quartus 综合, 跑完告诉我"
 
 主机 Claude:
-  1. start_task("quartus_sh --flow compile /home/mcp-rig/projects/fpga/blink",
-                cwd="/home/mcp-rig/projects/fpga",
+  1. start_task("quartus_sh --flow compile C:/Users/mcp-rig/projects/fpga/blink",
+                cwd="C:/Users/mcp-rig/projects/fpga",
                 timeout=7200)
      → {task_id: "ts-20260726-143022-a1b2c3",
         pid: 12345,
         state: "running",
-        log_path: "/home/mcp-rig/mcp-server/tasks/ts-20260726-143022-a1b2c3/stdout.log"}
+        log_path: "C:/Users/mcp-rig/mcp-server/tasks/ts-20260726-143022-a1b2c3/stdout.log"}
 
   2. 主人: "看下进度"
      → task_status("ts-20260726-143022-a1b2c3")
@@ -223,14 +223,14 @@ sshd 配置改了:
 
 ```
 ssh <rig>
-sqlite3 /home/mcp-rig/mcp-server/tasks.db \
+sqlite3 C:/Users/mcp-rig/mcp-server/tasks.db \
   "SELECT task_id, state, rc, started_at FROM tasks ORDER BY started_at DESC LIMIT 10"
   → 看最近 10 个任务状态
 
-ls -la /home/mcp-rig/mcp-server/tasks/ts-*/
+ls -la C:/Users/mcp-rig/mcp-server/tasks/ts-*/
   → 看每个任务的 log 文件
 
-cat /home/mcp-rig/mcp-server/tasks/ts-*/stderr.log | tail -50
+cat C:/Users/mcp-rig/mcp-server/tasks/ts-*/stderr.log | tail -50
   → 看错误输出
 ```
 

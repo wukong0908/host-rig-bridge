@@ -23,7 +23,7 @@
 │   authorized_keys: command="python -u server.py",              │
 │     no-port-forwarding, no-X11-forwarding,                     │
 │     no-agent-forwarding, no-pty                                │
-│   账号 nologin (/usr/sbin/nologin)                             │
+│   账号本地账号 ((OpenSSH 锁死 forced command))                              │
 │   账号只能跑 server.py, 跑别的也回到 server.py                  │
 ├───────────────────────────────────────────────────────────────┤
 │ Layer 2: 环境净化                                              │
@@ -69,7 +69,7 @@ await asyncio.create_subprocess_exec(*argv, env=SANE_ENV)
 
 **踩坑**:
 ```python
-# ❌ 错: 前缀匹配, /home/mcp-rig/projects_evil/ 也算"在沙箱内"
+# ❌ 错: 前缀匹配, C:/Users/mcp-rig/projects_evil/ 也算"在沙箱内"
 def in_sandbox(path):
     return os.path.realpath(path).startswith(SANDBOX)
 
@@ -111,7 +111,7 @@ except:
 **fix**:
 ```python
 SANE_ENV = {
-    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PATH": "C:/Windows/System32;C:/Windows;C:/iverilog/bin;C:/altera/quartus/bin64;C:/openFPGALoader",
     "HOME": f"/home/{RIG_USER}",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
@@ -119,15 +119,15 @@ SANE_ENV = {
 subprocess_exec(..., env=SANE_ENV)   # 不是 os.environ
 ```
 
-### 2.6 账号必须 nologin + forced command
+### 2.6 账号必须 OpenSSH forced command 锁死
 
-**why**: 纵深防御最后一层。即使 MCP server 自身有 bug, 账号 nologin + forced command 仍限制损伤面。
+**why**: 纵深防御最后一层。即使 MCP server 自身有 bug, Windows 本地账号 + OpenSSH forced command 仍限制损伤面。
 
 **fix**:
 ```bash
-useradd -m -s /usr/sbin/nologin mcp-rig
+New-LocalUser + icacls (OpenSSH 锁死 forced command) mcp-rig
 # authorized_keys:
-command="/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...
+command="C:/Users/mcp-rig/mcp-server/.venv/bin/python -u C:/Users/mcp-rig/mcp-server/src/server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...
 ```
 
 任何用 `mcp-rig` 账号的 SSH 都会被强制转走 server.py, 跑别的命令也只是把别的命令的参数传给 server.py(若 server.py 拒收, 啥都不发生)。
@@ -146,7 +146,7 @@ if len(stdout) > STDOUT_CAP:
 
 ### 2.8 审计日志必须去敏感
 
-**why**: 日志本身会变成敏感资产。若写原始路径 `/home/mcp-rig/projects/secret-project/...`, 日志泄露 = 项目结构泄露。
+**why**: 日志本身会变成敏感资产。若写原始路径 `C:/Users/mcp-rig/projects/secret-project/...`, 日志泄露 = 项目结构泄露。
 
 **fix**:
 ```python
@@ -174,7 +174,7 @@ def audit(tool, args, duration_ms, bytes_in, bytes_out, ok):
 | 命令 | 危险 | 替代 |
 |---|---|---|
 | `git` | `git config core.sshCommand '<rce>'` 逃逸 | 不用 git 同步(走主机 git push) |
-| `echo` | `echo xxx > /home/mcp-rig/.ssh/authorized_keys` 写任意文件 | 用 `write_file` |
+| `echo` | `echo xxx > C:/Users/mcp-rig/.ssh/authorized_keys` 写任意文件 | 用 `write_file` |
 | `make` | `Makefile` 可写任意 shell | 不用 make |
 | `cat` | 读 `/etc/shadow` / `~/.ssh/id_*` | 用 `read_file` |
 | `rm` / `mv` / `cp` / `mkdir` | 沙箱破坏 / 改名绕过沙箱 | 用 `delete_file` / `write_file` / `mkdir` |
@@ -256,7 +256,7 @@ def audit(tool, args, duration_ms, bytes_in, bytes_out, ok):
 |---|---|---|---|
 | 主人笔记本丢了 | 主机 key + DPAPI | 登分机 / 改代码 | DPAPI / BitLocker / forced command |
 | 主人手机丢了 | Termux key | 反向 SSH 回主机 | home key 失效 / 主人机 sshd 重发 key |
-| 分机被 root | 任何账号 | 改 server.py / 读 access.log | 账号 nologin 阻交互, server.py mode 644 但需要 mcp-rig 启动权限 |
+| 分机被管理员 | 任何账号 | 改 server.py / 读 access.log | 本地账号 + OpenSSH forced command 阻交互, server.py 需 mcp-rig 启动权限 |
 | MCP client bug | Claude 调用 | 跑白名单外命令 / 写沙箱外 | argv 二次校验 + 沙箱 + env 净化 |
 | 恶意 verilog | 主人上传 | 利用 iverilog 漏洞 | iverilog 跑在沙箱内, 失败被白名单拦, env 净化 |
 | 网络嗅探 | 中间人 | 看 MCP 流量 | SSH 加密 + 主机 key 校验 |

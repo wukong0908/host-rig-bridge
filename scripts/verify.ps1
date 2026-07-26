@@ -27,17 +27,17 @@ Test-Step "SSH 直连 $Rig (BatchMode)" {
 
 # 2. server.py 文件存在
 Test-Step "server.py 存在" {
-    ssh -T $Rig "test -f /home/mcp-rig/mcp-server/server.py && echo EXISTS || echo MISSING"
+    ssh -T $Rig "if (Test-Path C:\Users\mcp-rig\mcp-server\src\server\server.py) { Write-Host EXISTS } else { Write-Host MISSING }"
 }
 
 # 3. mcp SDK 可导入
 Test-Step "mcp SDK 导入" {
-    ssh -T $Rig "/home/mcp-rig/mcp-server/.venv/bin/python -c `"from mcp.server.fastmcp import FastMCP; print('OK')`""
+    ssh -T $Rig "& C:\Users\mcp-rig\mcp-server\.venv\Scripts\python.exe -c 'from mcp.server.fastmcp import FastMCP; print(chr(79)+chr(75))'"
 }
 
 # 4. 沙箱目录存在
 Test-Step "沙箱目录存在" {
-    ssh -T $Rig "test -d /home/mcp-rig/projects && echo EXISTS || echo MISSING"
+    ssh -T $Rig "if (Test-Path C:\Users\mcp-rig\projects) { Write-Host EXISTS } else { Write-Host MISSING }"
 }
 
 # 5. known_hosts.<rig> 有 fingerprint
@@ -73,7 +73,7 @@ Write-Host ""
 Write-Host "==== 验证完成 ====" -ForegroundColor Yellow
 Write-Host "Claude 跑通后, 在 Claude 里试:" -ForegroundColor Yellow
 Write-Host "  list_dir()" -ForegroundColor Yellow
-Write-Host "  read_file('/home/mcp-rig/projects/<你的文件>')" -ForegroundColor Yellow
+Write-Host "  read_file('C:/Users/mcp-rig/projects/<你的文件>')" -ForegroundColor Yellow
 Write-Host "  run_command('iverilog -V')" -ForegroundColor Yellow
 Write-Host "  start_task('iverilog -o ... ...', timeout=7200)" -ForegroundColor Yellow
 Write-Host "  task_status('<task_id>')" -ForegroundColor Yellow

@@ -43,7 +43,7 @@
 
 **核心组件**:
 - **主机侧**: `~/.claude.json`(MCP 注册) + `~/.ssh/config`(SSH 别名) + `rigs.local.yaml`(分机清单) + `host-rig-watchdog`(诊断守护)
-- **分机侧**: nologin 账号 `mcp-rig` + SSH forced command + MCP server 进程 + 沙箱目录 + 白名单二进制
+- **分机侧**: Windows 本地账号 `mcp-rig`(密码=随机 GUID, 只走 pubkey)+ OpenSSH forced command + MCP server 进程 + 沙箱目录 + 白名单二进制
 - **链路 A(反向)**: VPS frps + 主机 frpc + sshd + Termux/外网 Win key
 
 ## 二、三场景对照
@@ -123,7 +123,7 @@ watchdog 收到飞书告警 → 看告警级别:
   CRIT → 立刻处理
         → ssh -v <rig> 看握手
         → ssh -T <rig> "pgrep -af server.py" 看进程
-        → cat /home/mcp-rig/mcp-server/access.log 看审计
+        → cat C:/Users/mcp-rig/mcp-server/access.log 看审计
         → 看 watchdog 告警消息里的具体探针失败原因
 ```
 
