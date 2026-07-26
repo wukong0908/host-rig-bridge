@@ -15,6 +15,7 @@
 param(
     [string]$RigAlias = "",
     [string]$RigHost = "",
+    [int]$RigPort = 22,
     [string]$RigUser = "",
     [string]$RigKey = "",
     [string]$RigSandbox = "",
@@ -85,10 +86,10 @@ foreach ($r in $targets) {
     Write-Host ""
     Write-Host "=== rig $($r.alias) ($($r.host) / $($r.user)) ===" -ForegroundColor Cyan
 
-    Write-Host "[3/5] 追加 SSH config 段 (Host $($r.alias))"
+    Write-Host "[3/5] 追加 SSH config 段 (Host $($r.alias) → $($r.host):$RigPort)"
     $kh = Join-Path $HOME ".ssh\known_hosts.$($r.alias)"
     $added = Append-SshConfigBlock -ConfigPath $ConfigPath `
-        -Alias $r.alias -HostName $r.host -User $r.user -KeyPath $KeyPath -KnownHostsFile $kh
+        -Alias $r.alias -HostName $r.host -Port $RigPort -User $r.user -KeyPath $KeyPath -KnownHostsFile $kh
     if ($added) {
         Write-Host "    追加 Host $($r.alias) 段到 $ConfigPath"
     } else {

@@ -17,6 +17,7 @@ function Append-SshConfigBlock {
         [string]$Alias,
         [string]$HostName,
         [string]$User,
+        [int]$Port = 22,
         [string]$KeyPath,
         [string]$KnownHostsFile
     )
@@ -26,12 +27,14 @@ function Append-SshConfigBlock {
     if ($existing -match "(?m)^Host $Alias\s*$") {
         return $false  # 已存在
     }
+    # Port != 22 时写一行 (链路 B 走 VPS frp, 端口是 6001 等; 默认 LAN 22 不写)
+    $portLine = if ($Port -ne 22) { "  Port $Port`n" } else { "" }
     $block = @"
 
 # host-rig-bridge (added by register-rig.ps1)
 Host $Alias
   HostName $HostName
-  User $User
+$portLine  User $User
   IdentityFile $KeyPath
   IdentitiesOnly yes
   StrictHostKeyChecking yes
