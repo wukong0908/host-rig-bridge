@@ -77,4 +77,5 @@ function Find-Rig {
     return $hit
 }
 
-Export-ModuleMember -Function Read-RigsLocal, Find-Rig, Expand-HomePath
+# 注意: 顶层 Export-ModuleMember 只在 Import-Module 时有效; dot-source (. ./xxx.ps1) 不要带
+# 调用方按需 dot-source 或 Import-Module

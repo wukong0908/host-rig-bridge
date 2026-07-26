@@ -9,14 +9,14 @@ function Add-McprigServer {
         [string]$Command = "ssh"
     )
     if (Test-Path $ClaudeCfg) {
-        $existing = Get-Content $ClaudeCfg -Raw | ConvertFrom-Json
-        if (-not $existing.mcpServers) {
-            $existing | Add-Member -NotePropertyName mcpServers -NotePropertyValue (@{})
-        }
+        $existing = Get-Content $ClaudeCfg -Raw | ConvertFrom-Json -AsHashtable
     } else {
-        $existing = [pscustomobject]@{ mcpServers = @{} }
+        $existing = @{ mcpServers = @{} }
     }
-    $existing.mcpServers.$Alias = @{
+    if (-not $existing.mcpServers) {
+        $existing.mcpServers = @{}
+    }
+    $existing.mcpServers[$Alias] = @{
         command = $Command
         args    = $Args
     }
@@ -26,6 +26,6 @@ function Add-McprigServer {
 function Get-McpServers {
     param([string]$ClaudeCfg = "$HOME\.claude.json")
     if (-not (Test-Path $ClaudeCfg)) { return @{} }
-    $cfg = Get-Content $ClaudeCfg -Raw | ConvertFrom-Json
+    $cfg = Get-Content $ClaudeCfg -Raw | ConvertFrom-Json -AsHashtable
     return $cfg.mcpServers
 }

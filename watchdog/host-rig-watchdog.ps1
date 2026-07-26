@@ -125,14 +125,14 @@ function Test-SandboxDisk {
 }
 
 function Test-ClaudeJsonRig {
-    param([string]$Rig, [string]$Home = $HOME)
-    $cfg = Join-Path $Home ".claude.json"
+    param([string]$Rig, [string]$HomeDir = $HOME)
+    $cfg = Join-Path $HomeDir ".claude.json"
     if (-not (Test-Path $cfg)) {
         Send-Alert -Rig $Rig -Level WARN -Msg "~/.claude.json 缺失" -Probe "Test-Path $cfg"
         return $false
     }
     try {
-        $json = Get-Content $cfg -Raw | ConvertFrom-Json
+        $json = Get-Content $cfg -Raw | ConvertFrom-Json -AsHashtable
         if (-not $json.mcpServers.$Rig) {
             Send-Alert -Rig $Rig -Level WARN -Msg "~/.claude.json 未注册 mcpServers.$Rig" -Probe "ConvertFrom-Json $cfg"
             return $false

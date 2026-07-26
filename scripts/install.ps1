@@ -121,8 +121,6 @@ $sshdConf = "$env:ProgramData\ssh\sshd_config"
 $backup = "$sshdConf.bak.$(Get-Date -Format yyyyMMdd)"
 if (-not (Test-Path $backup)) { Copy-Item $sshdConf $backup -Force }
 $content = Get-Content $sshdConf
-$wantPubkey = ($content | Select-String -Pattern '^#?\s*PubkeyAuthentication').Line
-$wantPw = ($content | Select-String -Pattern '^#?\s*PasswordAuthentication').Line
 $new = @()
 foreach ($line in $content) {
     if ($line -match '^\s*#?\s*PubkeyAuthentication\s+') {
