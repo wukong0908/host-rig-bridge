@@ -1,0 +1,1 @@
+"""server package — host-rig-bridge MCP server 模块集."""

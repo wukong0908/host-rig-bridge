@@ -1,0 +1,52 @@
+# ~/.ssh/config 段模板
+# 复制对应段到 $HOME\.ssh\config
+
+# ===== 主机 → 分机 (走 MCP, BatchMode + RequestTTY no 必须) =====
+Host rig
+  HostName 192.168.x.x
+  User mcp-rig
+  IdentityFile ~/.ssh/id_claude_mcp
+  IdentitiesOnly yes
+  StrictHostKeyChecking yes
+  UserKnownHostsFile ~/.ssh/known_hosts.rig
+  ServerAliveInterval 60
+  ServerAliveCountMax 3
+  BatchMode yes
+  RequestTTY no
+  SendEnv none
+  LogLevel ERROR
+
+# ===== 通用分机模板 (加新分机复制改 alias + HostName) =====
+# Host rig-<name>
+#   HostName <ip>
+#   User mcp-rig
+#   IdentityFile ~/.ssh/id_claude_mcp
+#   IdentitiesOnly yes
+#   StrictHostKeyChecking yes
+#   UserKnownHostsFile ~/.ssh/known_hosts.rig-<name>
+#   ServerAliveInterval 60
+#   ServerAliveCountMax 3
+#   BatchMode yes
+#   RequestTTY no
+#   SendEnv none
+#   LogLevel ERROR
+
+# ===== 外网 → 主机 (走 frp, 场景 2) =====
+Host home
+  HostName 8.163.106.31
+  Port 6000
+  User WuKong
+  IdentityFile ~/.ssh/home_claude_key
+  IdentitiesOnly yes
+  ServerAliveInterval 30
+  ServerAliveCountMax 6
+  StrictHostKeyChecking accept-new
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+
+# ===== 通用 (所有 host 默认) =====
+Host *
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+  TCPKeepAlive yes

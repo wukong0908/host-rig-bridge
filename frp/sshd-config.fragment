@@ -1,0 +1,23 @@
+# sshd-config.fragment — sshd_config 锁片段
+# 应用方法: 把下面这一段追加到 C:\ProgramData\ssh\sshd_config (OpenSSH 重装后的路径)
+#
+# 踩坑: 系统自带的 sshd_config 不能动 (会被重装覆盖), 必须用 OpenSSH 自己的.
+# 踩坑: 管理员账户 SSH 公钥只认 administrators_authorized_keys, 不看 ~/.ssh/authorized_keys.
+
+# ===== 安全锁 =====
+PasswordAuthentication no
+PermitRootLogin no
+ChallengeResponseAuthentication no
+KerberosAuthentication no
+GSSAPIAuthentication no
+UsePAM no
+
+# ===== 审计 =====
+LogLevel VERBOSE
+SyslogFacility LOCAL0
+
+# ===== 主机 Claude Code 相关 (允许密码登临时登一次拉 key 用, 加匹配) =====
+# Match Address 192.168.*,10.*
+#   PasswordAuthentication yes
+# Match Group administrators
+#   AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys

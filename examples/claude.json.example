@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "rig": {
+      "command": "ssh",
+      "args": [
+        "-T", "rig",
+        "/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py"
+      ]
+    },
+    "rig-build-2": {
+      "command": "ssh",
+      "args": [
+        "-T", "rig-build-2",
+        "/home/mcp-rig/mcp-server/.venv/bin/python -u /home/mcp-rig/mcp-server/server.py"
+      ]
+    }
+  }
+}

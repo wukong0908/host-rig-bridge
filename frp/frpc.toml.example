@@ -1,0 +1,25 @@
+# frpc.toml.example — frpc 配置模板
+# 复制到 C:\frp\frpc.toml 后改 serverAddr / token / [[proxies]] 段.
+#
+# ⚠️ 踩坑: v0.61+ 顶层不要加 heartbeatInterval / tcpKeepalive, 会报错.
+#    ServerAliveInterval / ServerAliveCountMax 在 SSH config 里配, 不在 frpc.
+
+serverAddr = "8.163.106.31"      # ← 改: 阿里云 VPS 公网 IP
+serverPort = 7000
+auth.method = "token"
+auth.token = "your-frp-token-here"  # ← 改: 与 frps.ini 一致
+
+[[proxies]]
+name = "ssh-tunnel"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 6000                # 主机 sshd 经 frp 暴露在 VPS :6000
+
+# 多客户端? 加 [[proxies]] 段 + 不同 remotePort.
+# [[proxies]]
+# name = "ssh-tunnel-termux"
+# type = "tcp"
+# localIP = "127.0.0.1"
+# localPort = 22
+# remotePort = 6001
