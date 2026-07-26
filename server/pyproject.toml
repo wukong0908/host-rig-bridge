@@ -4,7 +4,8 @@ version = "0.2.0"
 description = "主机 Claude Code ↔ 多台分机账号 MCP server"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[server]~=1.10",
+    # mcp 1.x 后期 [server] extra 被合并/移除, 只装 mcp 主包
+    "mcp>=1.10,<2.0",
 ]
 
 [project.optional-dependencies]

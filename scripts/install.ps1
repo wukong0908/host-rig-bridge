@@ -176,8 +176,9 @@ if (-not (Test-Path "$ServerDir\.venv")) {
     & $py.Path $py.Arg -m venv "$ServerDir\.venv"
 }
 & "$ServerDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
-# 装 mcp[server] SDK (不强装本地 server 包, 避免 src layout 找不到 server/server/)
-& "$ServerDir\.venv\Scripts\python.exe" -m pip install "mcp[server]~=1.10" --quiet
+# mcp 1.x 后期 [server] extra 被合并/移除, 直接 pip install mcp
+# (pyproject 还写 mcp[server]~=1.10 是历史, extras 不存在但 ~1.10 仍约束主版本)
+& "$ServerDir\.venv\Scripts\python.exe" -m pip install "mcp>=1.10,<2.0" --quiet
 
 # 验证 SDK
 $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import FastMCP; print('mcp SDK OK')"
