@@ -8,7 +8,6 @@
 #
 # 必传: -UserName / -ServerDir / -Sandbox (路径不固定, 防误装)
 # 选传: -GitToken (私有仓 clone 需 PAT)
-# 选传: -AutoInstall (缺依赖直接 winget 装, 不问)
 #
 # 行为:
 #   0. Preflight 体检 (pwsh / python / git / OpenSSH / 网络)
@@ -32,9 +31,7 @@ param(
     [Parameter(Mandatory)]
     [string]$Sandbox,
     # PAT 走 clone (private repo iwr | bash 拿不到 raw URL; 主人在自己机手输)
-    [string]$GitToken = "",
-    # 缺啥自动装 (pwsh / python / git), 用户确认后才执行
-    [switch]$AutoInstall
+    [string]$GitToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,8 +60,7 @@ function Test-Preflight {
     }
     $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7
     if (-not $report.pwsh) {
-        # BOM 已加, PS 5.1 能跑中文, 不算 fatal — 但 pwsh 7 体验更好
-        Write-Verbose "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), BOM 兜底中文解析"
+        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), 推荐 winget install Microsoft.PowerShell"
     }
 
     $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -77,12 +73,6 @@ function Test-Preflight {
     $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
     if ($sshCap -and $sshCap.State -in @("Installed", "InstallPending")) {
         $report.openssh = $true
-    } elseif ($LASTEXITCODE -ne 0) {
-        # PS 5.1 / Win10 旧版没 Get-WindowsCapability cmdlet (没注册类), 退到 sc query
-        $sshSvc = sc.exe query sshd 2>&1
-        if ($sshSvc -match "STATE\s+:\s+\d+\s+RUNNING") {
-            $report.openssh = $true
-        }
     }
 
     try {
@@ -103,96 +93,25 @@ function Test-Preflight {
 
     $missing = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" } | ForEach-Object { $_.Key }
     # openssh 缺可自动装 (stage 6), 不算 fatal
+    if ($missing -contains "python") {
+        Write-Error "缺 Python — 装: winget install --id Python.Python.3.13 -e   (3.13 当前 stable latest, 后续 winget upgrade 跟新)"
+    }
+    if ($missing -contains "git") {
+        Write-Error "缺 git — 装: winget install --id Git.Git -e"
+    }
     if ($missing -contains "internet") {
         Write-Error "无网络 (github.com 不可达), 检查代理/DNS"
-        throw "Preflight 失败: 无网络"
+    }
+    if ($missing -contains "pwsh") {
+        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
     }
 
-    # 可自动装的映射 (pwsh 7 推荐但不 fatal — PS 5.1 + BOM 已能跑)
-    $installMap = [ordered]@{
-        python = @{ Id = "Python.Python.3.13"; Name = "Python 3.13 (latest stable)"; Fatal = $true }
-        git    = @{ Id = "Git.Git";          Name = "Git for Windows";                Fatal = $true }
-        pwsh   = @{ Id = "Microsoft.PowerShell"; Name = "PowerShell 7 (推荐, 非 fatal)"; Fatal = $false }
-    }
-    $toInstall = @($missing | Where-Object { $installMap.Contains($_) -and $installMap[$_].Fatal })
-
-    if ($toInstall.Count -gt 0) {
-        Write-Host ""
-        Write-Host "=== 缺失项 ===" -ForegroundColor Yellow
-        foreach ($k in $toInstall) {
-            Write-Host "  - $($installMap[$k].Name) (winget id: $($installMap[$k].Id))" -ForegroundColor Yellow
-        }
-        Write-Host ""
-
-        if (-not $AutoInstall) {
-            # Read-Host 不能在管道流下用 (Tee-Object 会卡住), 走 stderr + exit 1
-            [Console.Error]::WriteLine("")
-            [Console.Error]::WriteLine("缺依赖, 加 -AutoInstall 自动装, 或手动装后重跑:")
-            foreach ($k in $toInstall) {
-                [Console.Error]::WriteLine("  winget install --id $($installMap[$k].Id) -e --source winget")
-            }
-            throw "Preflight 失败: 缺依赖, 加 -AutoInstall 自动装"
-        }
-
-        foreach ($k in $toInstall) {
-            $pkg = $installMap[$k]
-            Write-Host ""
-            Write-Host ">>> winget install --id $($pkg.Id) -e --source winget" -ForegroundColor Cyan
-            $proc = Start-Process -FilePath "winget" `
-                -ArgumentList @("install", "--id", $pkg.Id, "-e", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements") `
-                -Wait -PassThru -NoNewWindow
-            if ($proc.ExitCode -ne 0) {
-                throw "winget install $($pkg.Id) 退出 $($proc.ExitCode)"
-            }
-            Write-Host "    ✓ $($pkg.Name) 装好" -ForegroundColor Green
-        }
-
-        # 重检 (PATH 新装程序需新会话才生效; 提示重开 PowerShell)
-        Write-Host ""
-        Write-Host "=== 装完重检 (新装可能需重开 PowerShell 才生效) ===" -ForegroundColor Cyan
-        foreach ($k in $installMap.Keys) {
-            $stillMissing = $true
-            if ($k -eq "python") {
-                $py = Get-Command py.exe -ErrorAction SilentlyContinue
-                $pyAbs = "C:\Users\$UserName\AppData\Local\Python\bin\python.exe"
-                if ($py -or (Test-Path $pyAbs)) { $stillMissing = $false }
-            } elseif ($k -eq "git") {
-                if (Get-Command git -ErrorAction SilentlyContinue) { $stillMissing = $false }
-            } elseif ($k -eq "pwsh") {
-                if ($PSVersionTable.PSVersion.Major -ge 7) { $stillMissing = $false; $stillMissing = $false }
-                $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-                if ($pwshCmd) { $stillMissing = $false }
-            }
-            $report[$k] = -not $stillMissing
-            $mark = if ($report[$k]) { "✓" } else { "✗" }
-            $color = if ($report[$k]) { "Green" } else { "Red" }
-            Write-Host ("  {0} {1}" -f $mark, $k) -ForegroundColor $color
-        }
-
-        # 仅 fatal 项 (pwsh 7 非 fatal — BOM 兜底)
-        $stillBad = $report.GetEnumerator() | Where-Object {
-            -not $_.Value -and $_.Key -ne "openssh" -and $_.Key -ne "internet" -and $_.Key -ne "pwsh"
-        } | ForEach-Object { $_.Key }
-        if ($stillBad.Count -gt 0) {
-            Write-Host ""
-            Write-Warning "仍有缺失: $($stillBad -join ', '). 通常需重开 PowerShell 让 PATH 生效后重跑 install.ps1"
-            throw "Preflight 失败: 装后仍缺 $($stillBad -join ', '). 重开管理员 PowerShell 再跑"
-        }
-    }
-
-    # pwsh 7 推荐但不 fatal — 警告即可
-    if (-not $report.pwsh) {
-        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), BOM 已加可继续; 推荐 winget install --id Microsoft.PowerShell"
+    if ($missing -match "python|git|internet") {
+        throw "Preflight 失败, 请先补齐上面缺失项再跑"
     }
 }
 
 Assert-Admin
-
-# === 开始部署提示 ===
-Write-Host ""
-Write-Host ">>> 开始部署 host-rig-bridge <<<" -ForegroundColor Magenta
-Write-Host ""
-
 Test-Preflight
 
 Write-Host "==========================================="
@@ -281,24 +200,13 @@ icacls $Sandbox /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" |
 # 6. OpenSSH Server
 Write-Stage 6 8 "装/启 OpenSSH Server"
 $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
-if ($openssh) {
-    if ($openssh.State -ne "Installed") {
-        Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
-    } else {
-        Write-Host "    OpenSSH Server 已装"
-    }
+if ($openssh.State -ne "Installed") {
+    Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
 } else {
-    # PS 5.1 / 老 Win10 没 Get-WindowsCapability cmdlet — 用 winget 装 (现代 Windows 都有)
-    Write-Host "    用 winget 装 OpenSSH Server (兼容老系统)" -ForegroundColor Yellow
-    $proc = Start-Process -FilePath "winget" `
-        -ArgumentList @("install", "--id", "Microsoft.OpenSSH.Beta", "-e", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements") `
-        -Wait -PassThru -NoNewWindow
-    if ($proc.ExitCode -ne 0) {
-        throw "winget install Microsoft.OpenSSH.Beta 失败, exit=$($proc.ExitCode)"
-    }
+    Write-Host "    OpenSSH Server 已装"
 }
-Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
-Start-Service sshd -ErrorAction SilentlyContinue
+Set-Service -Name sshd -StartupType Automatic
+Start-Service sshd
 # 防火墙放行 (若启用)
 if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -ErrorAction SilentlyContinue) {
     Enable-NetFirewallRule -Name "OpenSSH-Server-In-TCP" | Out-Null
@@ -350,6 +258,3 @@ Write-Host ""
 Write-Host "  3. 主机首次 SSH 验握手:" -ForegroundColor Yellow
 Write-Host "       ssh -o StrictHostKeyChecking=accept-new $UserName@<rig-host>" -ForegroundColor Yellow
 Write-Host "  4. 重启主机 Claude Code, /mcp 看 rig connected." -ForegroundColor Yellow
-Write-Host ""
-Write-Host "出错留日志 (兼容 PS 5.1 + pwsh 7, *>&1 是 7 才支持):" -ForegroundColor Yellow
-Write-Host "   .\install.ps1 ...args... 2>&1 | Tee-Object -FilePath C:\install.log" -ForegroundColor Yellow
