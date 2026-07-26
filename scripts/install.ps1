@@ -42,6 +42,22 @@ function Write-Stage {
     Write-Host "[$N/$Total] $Msg" -ForegroundColor Cyan
 }
 
+function Write-Step {
+    # stage 内的子步骤, 不换行; 结束时调 Write-StepDone
+    param([string]$Msg)
+    Write-Host "    → $Msg " -NoNewline -ForegroundColor DarkGray
+}
+
+function Write-StepDone {
+    param([string]$Msg = "完成")
+    Write-Host "[$Msg]" -ForegroundColor Green
+}
+
+function Write-StepSkip {
+    param([string]$Reason = "已存在")
+    Write-Host "[跳过: $Reason]" -ForegroundColor DarkGray
+}
+
 function Assert-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $pr = New-Object Security.Principal.WindowsPrincipal $id
@@ -139,15 +155,15 @@ Write-Host "  - Python 3.10+"
 Write-Host "  - Git"
 Write-Host "  - 网络可达 github.com (克隆私有仓)"
 Write-Host ""
-Write-Host "接下来 8 stage (预计 3-10 min):" -ForegroundColor Cyan
-Write-Host "  0. Preflight 体检"
-Write-Host "  1. 建本地账号 $UserName"
-Write-Host "  2. 建 server 目录 + .ssh"
-Write-Host "  3. git clone 代码"
-Write-Host "  4. 建 venv + 装 mcp SDK"
-Write-Host "  5. 建沙箱 $Sandbox"
-Write-Host "  6. 装 OpenSSH Server"
-Write-Host "  7. 锁 sshd_config (禁密码登录)"
+Write-Host "接下来 8 stage (预计 5-15 min, 主要慢点 stage 4 pip + stage 6 DISM):" -ForegroundColor Cyan
+Write-Host "  0. Preflight 体检             (秒级)"
+Write-Host "  1. 建本地账号 $UserName       (秒级)"
+Write-Host "  2. 建 server 目录 + .ssh      (秒级)"
+Write-Host "  3. git clone 代码             (5-30s)"
+Write-Host "  4. 建 venv + 装 mcp SDK       (30-90s  ← 主要慢点 1)"
+Write-Host "  5. 建沙箱 $Sandbox            (秒级)"
+Write-Host "  6. 装 OpenSSH Server          (60-180s ← 主要慢点 2, DISM 下 component)"
+Write-Host "  7. 锁 sshd_config             (秒级)"
 Write-Host ""
 Write-Host "回滚: 各 stage 幂等, 重跑 install.ps1 即可" -ForegroundColor DarkGray
 Write-Host ""
@@ -157,44 +173,55 @@ Test-Preflight
 # 1. 本地账号
 Write-Stage 1 8 "建本地账号 $UserName (无密码, OpenSSH 用)"
 if (Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue) {
-    Write-Host "    账号已存在, 跳过"
+    Write-StepSkip "账号已存在"
 } else {
+    Write-Step "New-LocalUser $UserName (密码 = 随机 GUID)"
     # Password = [System.Guid]::NewGuid() — 不可登密码 (OpenSSH 走 pubkey)
     $pwd = ConvertTo-SecureString ([System.Guid]::NewGuid().ToString()) -AsPlainText -Force
     New-LocalUser -Name $UserName -Password $pwd -PasswordNeverExpires -UserMayNotChangePassword `
         -Description "host-rig-bridge MCP server (pubkey only)" | Out-Null
-    Write-Host "    账号已建 (密码 = 随机 GUID, 不开放密码登)"
+    Write-StepDone
 }
 
 # 2. server 目录
 Write-Stage 2 8 "建 server 目录 + .ssh"
+Write-Step "mkdir $ServerDir"
 New-Item -ItemType Directory -Path $ServerDir -Force | Out-Null
+Write-StepDone
+Write-Step "mkdir C:\Users\$UserName\.ssh"
 New-Item -ItemType Directory -Path "C:\Users\$UserName\.ssh" -Force | Out-Null
+Write-StepDone
 # icacls 域限定 (本地账号 + 计算机名) 防极少数上下文解析失败
 $acct = "$env:COMPUTERNAME\$UserName"
+Write-Step "icacls .ssh (限 $acct + SYSTEM)"
 icacls "C:\Users\$UserName\.ssh" /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+Write-StepDone
 
 # 3. git clone
 Write-Stage 3 8 "git clone $Repo @ $Branch → $ServerDir\src"
 if (Test-Path "$ServerDir\src\.git") {
-    Write-Host "    已存在, 跳过"
+    Write-StepSkip "$ServerDir\src 已存在"
 } else {
     if ($GitToken) {
         $cloneUrl = "https://${GitToken}@github.com/$Repo.git"
     } else {
         # 走浏览器登录态 (无 token 假设浏览器已登录 + gh credential manager)
         $cloneUrl = "https://github.com/$Repo.git"
-        Write-Host "    无 -GitToken, 假设浏览器/GCM 已认证; 若 401 请加 -GitToken <pat>" -ForegroundColor Yellow
+        Write-Host "    ⚠ 无 -GitToken, 假设浏览器/GCM 已认证; 若 401 请加 -GitToken <pat>" -ForegroundColor Yellow
     }
-    git clone --depth 1 --branch $Branch $cloneUrl "$ServerDir\src"
+    Write-Step "git clone --depth 1 --branch $Branch (私有仓 ~几秒-1min)"
+    git clone --depth 1 --branch $Branch --progress $cloneUrl "$ServerDir\src"
+    Write-StepDone
     # 清 token 不留痕迹: 重写 remote 为不带 PAT
     if ($GitToken) {
+        Write-Step "remote set-url (清 PAT)"
         git -C "$ServerDir\src" remote set-url origin "https://github.com/$Repo.git"
+        Write-StepDone
     }
 }
 
 # 4. venv + pip
-Write-Stage 4 8 "建 venv + 装 mcp[server]"
+Write-Stage 4 8 "建 venv + 装 mcp SDK"
 if (-not (Test-Path "$ServerDir\.venv")) {
     # 三种探测, 任一可用: py 启动器 / python 绝对路径 / PATH python
     $py = $null
@@ -211,38 +238,54 @@ if (-not (Test-Path "$ServerDir\.venv")) {
     if (-not $py) {
         throw "找不到 Python: 装 py 启动器 (winget install Python.Python.3.13) 或本地 Python"
     }
-    Write-Host "    用 $($py.Path) $($py.Arg)"
+    Write-Step "python -m venv (用 $($py.Path) $($py.Arg))"
     & $py.Path $py.Arg -m venv "$ServerDir\.venv"
+    Write-StepDone
+} else {
+    Write-StepSkip "$ServerDir\.venv 已存在"
 }
-& "$ServerDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
+Write-Step "pip install --upgrade pip (国内 PyPI 镜像 30-60s)"
+& "$ServerDir\.venv\Scripts\python.exe" -m pip install --upgrade pip
+Write-StepDone
+Write-Step "pip install mcp>=1.10,<2.0 (拉 mcp + 10+ 依赖, 30-90s)"
 # mcp 1.x 后期 [server] extra 被合并/移除, 直接 pip install mcp
 # (pyproject 还写 mcp[server]~=1.10 是历史, extras 不存在但 ~1.10 仍约束主版本)
-& "$ServerDir\.venv\Scripts\python.exe" -m pip install "mcp>=1.10,<2.0" --quiet
+& "$ServerDir\.venv\Scripts\python.exe" -m pip install "mcp>=1.10,<2.0"
+Write-StepDone
 
 # 验证 SDK
+Write-Step "import FastMCP 验证 SDK"
 $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import FastMCP; print('mcp SDK OK')"
-Write-Host "    $ok"
+Write-StepDone "$ok"
 
 # 5. 沙箱
 Write-Stage 5 8 "建沙箱 $Sandbox"
+Write-Step "mkdir $Sandbox"
 New-Item -ItemType Directory -Path $Sandbox -Force | Out-Null
+Write-StepDone
+Write-Step "icacls $Sandbox (限 $acct + SYSTEM)"
 icacls $Sandbox /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+Write-StepDone
 
 # 6. OpenSSH Server
-Write-Stage 6 8 "装/启 OpenSSH Server"
+Write-Stage 6 8 "装/启 OpenSSH Server (首次 60-180s, 走 DISM 下 Windows component)"
 $installed = $false
 try {
+    Write-Step "Get-WindowsCapability OpenSSH.Server~~~~0.0.1.0 (秒级)"
     $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction Stop
+    Write-StepDone "State=$($openssh.State)"
     if ($openssh.State -ne "Installed") {
+        Write-Step "Add-WindowsCapability (拉 component, 60-180s)"
         Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
+        Write-StepDone
     } else {
         $installed = $true
-        Write-Host "    OpenSSH Server 已装 (Get-WindowsCapability)"
     }
 } catch {
     # Get-WindowsCapability 不可用 (Win10 LTSC / 精简版 / server core 没注册类)
     # fallback: DISM 系统 API (比 winget 稳, 走 Windows component store)
-    Write-Host "    Get-WindowsCapability 不可用, 退到 DISM 装 OpenSSH" -ForegroundColor Yellow
+    Write-Host "    ⚠ Get-WindowsCapability 不可用, 退到 DISM 装 OpenSSH" -ForegroundColor Yellow
+    Write-Step "dism /online /add-capability OpenSSH.Server~~~~0.0.1.0 (首次 60-180s)"
     $dismOut = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw @"
@@ -258,19 +301,33 @@ $dismOut
 "@
     }
     $installed = $true
+    Write-StepDone
 }
+Write-Step "Set-Service sshd -StartupType Automatic + Start-Service"
 Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
 Start-Service sshd -ErrorAction SilentlyContinue
+Write-StepDone
 # 防火墙放行 (若启用)
+Write-Step "Enable-NetFirewallRule OpenSSH-Server-In-TCP"
 if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -ErrorAction SilentlyContinue) {
     Enable-NetFirewallRule -Name "OpenSSH-Server-In-TCP" | Out-Null
+    Write-StepDone
+} else {
+    Write-StepSkip "防火墙规则不存在 (可能未启用防火墙)"
 }
 
 # 7. sshd_config 锁 (匹配 examples/authorized-keys 假设)
 Write-Stage 7 8 "配 sshd_config (PasswordAuthentication no, PubkeyAuthentication yes)"
 $sshdConf = "$env:ProgramData\ssh\sshd_config"
 $backup = "$sshdConf.bak.$(Get-Date -Format yyyyMMdd)"
-if (-not (Test-Path $backup)) { Copy-Item $sshdConf $backup -Force }
+Write-Step "备份原 sshd_config → $backup"
+if (-not (Test-Path $backup)) {
+    Copy-Item $sshdConf $backup -Force
+    Write-StepDone
+} else {
+    Write-StepSkip "备份已存在"
+}
+Write-Step "改写 sshd_config (Pubkey yes / Password no / Root no)"
 $content = Get-Content $sshdConf
 $new = @()
 foreach ($line in $content) {
@@ -291,8 +348,10 @@ if (-not ($new | Select-String '^PermitRootLogin\s+no$')) { $new += "PermitRootL
 # 写文件用 utf8NoBOM — sshd 不接受 BOM (BOM 致 sshd 解析失败, 服务不启)
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($sshdConf, ($new -join "`r`n") + "`r`n", $utf8NoBom)
+Write-StepDone
+Write-Step "Restart-Service sshd"
 Restart-Service sshd
-Write-Host "    sshd_config 已改 (utf8NoBOM), 服务已重启"
+Write-StepDone
 
 Write-Host ""
 Write-Host "==========================================="
