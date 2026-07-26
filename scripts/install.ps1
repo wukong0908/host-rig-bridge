@@ -77,6 +77,12 @@ function Test-Preflight {
     $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
     if ($sshCap -and $sshCap.State -in @("Installed", "InstallPending")) {
         $report.openssh = $true
+    } elseif ($LASTEXITCODE -ne 0) {
+        # PS 5.1 / Win10 旧版没 Get-WindowsCapability cmdlet (没注册类), 退到 sc query
+        $sshSvc = sc.exe query sshd 2>&1
+        if ($sshSvc -match "STATE\s+:\s+\d+\s+RUNNING") {
+            $report.openssh = $true
+        }
     }
 
     try {
@@ -275,13 +281,24 @@ icacls $Sandbox /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" |
 # 6. OpenSSH Server
 Write-Stage 6 8 "装/启 OpenSSH Server"
 $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
-if ($openssh.State -ne "Installed") {
-    Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
+if ($openssh) {
+    if ($openssh.State -ne "Installed") {
+        Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
+    } else {
+        Write-Host "    OpenSSH Server 已装"
+    }
 } else {
-    Write-Host "    OpenSSH Server 已装"
+    # PS 5.1 / 老 Win10 没 Get-WindowsCapability cmdlet — 用 winget 装 (现代 Windows 都有)
+    Write-Host "    用 winget 装 OpenSSH Server (兼容老系统)" -ForegroundColor Yellow
+    $proc = Start-Process -FilePath "winget" `
+        -ArgumentList @("install", "--id", "Microsoft.OpenSSH.Beta", "-e", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements") `
+        -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        throw "winget install Microsoft.OpenSSH.Beta 失败, exit=$($proc.ExitCode)"
+    }
 }
-Set-Service -Name sshd -StartupType Automatic
-Start-Service sshd
+Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
+Start-Service sshd -ErrorAction SilentlyContinue
 # 防火墙放行 (若启用)
 if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -ErrorAction SilentlyContinue) {
     Enable-NetFirewallRule -Name "OpenSSH-Server-In-TCP" | Out-Null
