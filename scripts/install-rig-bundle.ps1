@@ -27,7 +27,8 @@
 [CmdletBinding()]
 param(
     [switch]$Verify,
-    [switch]$Status
+    [switch]$Status,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -588,9 +589,11 @@ if (-not $RIG_VPS -or -not $RIG_FRP_TOKEN -or -not $RIG_REMOTE_PORT -or -not $RI
 }
 
 Test-Preflight
-# 整体检测: 全装完就早返回, 不重跑 9 stage
-if (Test-AlreadyDeployed) {
-    return
+# 整体检测: 全装完就早返回, 不重跑 9 stage (-Force 跳过)
+if (-not $Force) {
+    if (Test-AlreadyDeployed) {
+        return
+    }
 }
 
 Install-OpenSsh
