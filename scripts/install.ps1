@@ -114,16 +114,38 @@ function Test-Preflight {
 }
 
 Assert-Admin
-Test-Preflight
 
-Write-Host "==========================================="
-Write-Host " host-rig-bridge Windows 外机安装"
-Write-Host "==========================================="
-Write-Host "user:    $UserName"
-Write-Host "server:  $ServerDir"
-Write-Host "sandbox: $Sandbox"
-Write-Host "repo:    $Repo @ $Branch"
 Write-Host ""
+Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║          host-rig-bridge Windows 外机安装                     ║" -ForegroundColor Cyan
+Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "参数:" -ForegroundColor Cyan
+Write-Host "  user:    $UserName"
+Write-Host "  server:  $ServerDir"
+Write-Host "  sandbox: $Sandbox"
+Write-Host "  repo:    $Repo @ $Branch"
+Write-Host ""
+Write-Host "硬要求:" -ForegroundColor Yellow
+Write-Host "  - PowerShell 7.1+ (当前 $($PSVersionTable.PSVersion))"
+Write-Host "  - Python 3.10+"
+Write-Host "  - Git"
+Write-Host "  - 网络可达 github.com (克隆私有仓)"
+Write-Host ""
+Write-Host "接下来 8 stage (预计 3-10 min):" -ForegroundColor Cyan
+Write-Host "  0. Preflight 体检"
+Write-Host "  1. 建本地账号 $UserName"
+Write-Host "  2. 建 server 目录 + .ssh"
+Write-Host "  3. git clone 代码"
+Write-Host "  4. 建 venv + 装 mcp SDK"
+Write-Host "  5. 建沙箱 $Sandbox"
+Write-Host "  6. 装 OpenSSH Server"
+Write-Host "  7. 锁 sshd_config (禁密码登录)"
+Write-Host ""
+Write-Host "回滚: 各 stage 幂等, 重跑 install.ps1 即可" -ForegroundColor DarkGray
+Write-Host ""
+
+Test-Preflight
 
 # 1. 本地账号
 Write-Stage 1 8 "建本地账号 $UserName (无密码, OpenSSH 用)"
