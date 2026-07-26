@@ -361,12 +361,12 @@ Write-Host ""
 Write-Host "下一步:" -ForegroundColor Yellow
 Write-Host "  0. 浏览器登录 https://github.com/wukong0908/host-rig-bridge 或传 -GitToken <pat>" -ForegroundColor Yellow
 Write-Host "  1. 在主机生成 SSH key (若尚未有):" -ForegroundColor Yellow
-Write-Host "       ssh-keygen -t ed25519 -f \$HOME\.ssh\id_claude_mcp -N \"\"" -ForegroundColor Yellow
+Write-Host "       ssh-keygen -t ed25519 -f ~\.ssh\id_claude_mcp -N `\"`"" -ForegroundColor Yellow
 Write-Host "  2. 把主机公钥贴到外机 authorized_keys (一行, 带 forced command):" -ForegroundColor Yellow
 Write-Host "       command=`"$ServerDir\.venv\Scripts\python.exe -u $ServerDir\src\server\server.py`",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA..." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "     外机 PowerShell (管理员):" -ForegroundColor Yellow
-Write-Host "       Add-Content -Path \"C:\Users\$UserName\.ssh\authorized_keys\" -Value \"<上面那行>\"" -ForegroundColor Yellow
+Write-Host ('       Add-Content -Path "C:\Users\{0}\.ssh\authorized_keys" -Value "<上面那行>"' -f $UserName) -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  3. 主机首次 SSH 验握手:" -ForegroundColor Yellow
 Write-Host "       ssh -o StrictHostKeyChecking=accept-new $UserName@<rig-host>" -ForegroundColor Yellow
