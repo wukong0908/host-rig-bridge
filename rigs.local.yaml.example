@@ -1,0 +1,42 @@
+# rigs.local.yaml.example — 真实分机清单模板
+# 用法: cp rigs.local.yaml.example ~/.claude/host-rig-bridge/rigs.local.yaml
+#       然后填真实 IP / 路径 / 备注
+#
+# ⚠️ 此文件用 .local 后缀, 不入仓。每个主人都有自己的本地清单。
+#
+# 字段定义见 docs/03-rigs-format.md
+
+version: 1
+default_rig: rig                  # Claude Code 不指定时默认连哪台
+
+rigs:
+  - alias: rig                    # SSH 别名 / MCP server 名
+    host: 192.168.x.x             # 必填: 外机 IP 或域名
+    user: mcp-rig                 # 必填: 分机账号
+    key: ~/.ssh/id_claude_mcp     # 必填: 主机私钥路径
+    sandbox: /home/mcp-rig/projects         # 路径沙箱根
+    server: /home/mcp-rig/mcp-server/server.py
+    venv: /home/mcp-rig/mcp-server/.venv
+    capabilities: [sync, async]   # 哪些场景开
+    tools:                        # run_command 白名单
+      - iverilog
+      - vvp
+      - quartus_sh
+      - openFPGALoader
+      - ls
+    notes: "实验室装机机"
+
+  # 备用机: 仅同步, 不开异步长任务
+  - alias: rig-build-2
+    host: 192.168.x.y
+    user: mcp-rig
+    key: ~/.ssh/id_claude_mcp
+    sandbox: /home/mcp-rig/projects
+    server: /home/mcp-rig/mcp-server/server.py
+    venv: /home/mcp-rig/mcp-server/.venv
+    capabilities: [sync]
+    tools:
+      - iverilog
+      - vvp
+      - ls
+    notes: "备用编译机, 仅同步编译不开异步"

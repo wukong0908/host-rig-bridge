@@ -1,0 +1,45 @@
+# Secrets & credentials
+*.key
+*.pub
+**/.env*
+**/.env.*
+rigs.local.yaml
+
+# Python
+**/__pycache__/
+**/.venv/
+**/venv/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.egg-info/
+
+# PowerShell temp
+**/tmp_*.ps1
+**/*.bak*
+**/*.bak
+**/*.old
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build / dist
+dist/
+build/
+*.whl
+
+# Logs (除非主人显式要追踪)
+**/*.log
+!**/examples/*.log
+
+# Watchdog runtime
+watchdog/state/
+watchdog/*.state
