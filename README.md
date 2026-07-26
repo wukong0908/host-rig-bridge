@@ -34,7 +34,17 @@ pwsh scripts/register-rig.ps1 -RigAlias newrig
 
 外机 (Windows, 管理员 PowerShell):
 ```powershell
+# 私有仓 raw.githubusercontent.com 需 GitHub 认证, 任选一种:
+
+# (A) 浏览器登录态 + iwr 直拉 (浏览器必须已登录 GitHub)
 iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex
+
+# (B) 带 PAT 走 git clone, 离线拷 install.ps1 + 跑本地
+git clone https://github.com/wukong0908/host-rig-bridge.git C:\host-rig-bridge
+C:\host-rig-bridge\scripts\install.ps1 -GitToken ghp_xxx    # 或登录态可省
+
+# (C) 下载 zip: 浏览器开 https://github.com/wukong0908/host-rig-bridge/archive/refs/heads/main.zip
+#     解压后 .\host-rig-bridge-main\scripts\install.ps1
 ```
 
 主机:

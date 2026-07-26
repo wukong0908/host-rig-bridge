@@ -20,7 +20,9 @@ param(
     [string]$Repo = "wukong0908/host-rig-bridge",
     [string]$Branch = "main",
     [string]$ServerDir = "C:\Users\mcp-rig\mcp-server",
-    [string]$Sandbox = "C:\Users\mcp-rig\projects"
+    [string]$Sandbox = "C:\Users\mcp-rig\projects",
+    # PAT 走 clone (private repo iwr | bash 拿不到 raw URL; 主人在自己机手输)
+    [string]$GitToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,7 +76,18 @@ Write-Stage 3 7 "git clone $Repo @ $Branch → $ServerDir\src"
 if (Test-Path "$ServerDir\src\.git") {
     Write-Host "    已存在, 跳过"
 } else {
-    git clone --depth 1 --branch $Branch "https://github.com/$Repo.git" "$ServerDir\src"
+    if ($GitToken) {
+        $cloneUrl = "https://${GitToken}@github.com/$Repo.git"
+    } else {
+        # 走浏览器登录态 (无 token 假设浏览器已登录 + gh credential manager)
+        $cloneUrl = "https://github.com/$Repo.git"
+        Write-Host "    无 -GitToken, 假设浏览器/GCM 已认证; 若 401 请加 -GitToken <pat>" -ForegroundColor Yellow
+    }
+    git clone --depth 1 --branch $Branch $cloneUrl "$ServerDir\src"
+    # 清 token 不留痕迹: 重写 remote 为不带 PAT
+    if ($GitToken) {
+        git -C "$ServerDir\src" remote set-url origin "https://github.com/$Repo.git"
+    }
 }
 
 # 4. venv + pip
@@ -149,6 +162,7 @@ Write-Host " ✅ Windows 外机安装完成"
 Write-Host "==========================================="
 Write-Host ""
 Write-Host "下一步:" -ForegroundColor Yellow
+Write-Host "  0. 浏览器登录 https://github.com/wukong0908/host-rig-bridge 或传 -GitToken <pat>" -ForegroundColor Yellow
 Write-Host "  1. 在主机生成 SSH key (若尚未有):" -ForegroundColor Yellow
 Write-Host "       ssh-keygen -t ed25519 -f \$HOME\.ssh\id_claude_mcp -N \"\"" -ForegroundColor Yellow
 Write-Host "  2. 把主机公钥贴到外机 authorized_keys (一行, 带 forced command):" -ForegroundColor Yellow
