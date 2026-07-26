@@ -86,13 +86,14 @@ function Assert-Admin {
 }
 
 # ===== Test-Preflight =====
+# 仅本地检查 (<1s). 外网探测 + Windows capability catalog 都不走 (慢),
+# 真缺时由 stage 内 git clone / pip install / dism 自己失败抛错.
 function Test-Preflight {
     $report = [ordered]@{
-        pwsh      = $false
-        python    = $false
-        git       = $false
-        openssh   = $false
-        internet  = $false
+        pwsh    = $false
+        python  = $false
+        git     = $false
+        openssh = $false
     }
     $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 1
     $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -100,21 +101,12 @@ function Test-Preflight {
     if ($pyCmd -or (Test-Path $pyAbs)) { $report.python = $true }
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd) { $report.git = $true }
-    try {
-        $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction Stop
-        if ($sshCap.State -in @("Installed", "InstallPending")) { $report.openssh = $true }
-    } catch {
-        $sshSvc = Get-Service sshd -ErrorAction SilentlyContinue
-        if ($sshSvc) { $report.openssh = $true }
-    }
-    try {
-        $null = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 10 -Method Head
-        $report.internet = $true
-    } catch {
-        $report.internet = $false
-    }
+    # OpenSSH 检测: Get-Service (本地, <0.1s)
+    $sshSvc = Get-Service sshd -ErrorAction SilentlyContinue
+    if ($sshSvc) { $report.openssh = $true }
+
     Write-Host ""
-    Write-Host "=== Preflight 体检 ===" -ForegroundColor Cyan
+    Write-Host "=== Preflight (本地检查) ===" -ForegroundColor Cyan
     foreach ($k in $report.Keys) {
         $mark = if ($report[$k]) { "✓" } else { "✗" }
         $color = if ($report[$k]) { "Green" } else { "Red" }
@@ -122,7 +114,7 @@ function Test-Preflight {
     }
     Write-Host ""
     $missing = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" } | ForEach-Object { $_.Key }
-    if ($missing -match "python|git|internet|pwsh") {
+    if ($missing -match "python|git|pwsh") {
         throw "Preflight 失败: 缺 $($missing -join ', ')"
     }
 }
