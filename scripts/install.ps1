@@ -1,11 +1,12 @@
 ﻿# install.ps1 — Windows 外机一次性 setup (等价 Linux install.sh)
-# 用法 (管理员 PowerShell 7, 在外机上跑):
+# 用法 (管理员 PowerShell 7.1+, 在外机上跑):
 #   iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex `
 #       -UserName mcp-rig -ServerDir C:\Users\mcp-rig\mcp-server -Sandbox C:\Users\mcp-rig\projects
 # 或:
 #   Invoke-WebRequest .../install.ps1 -OutFile install.ps1
 #   .\install.ps1 -UserName mcp-rig -ServerDir C:\Users\mcp-rig\mcp-server -Sandbox C:\Users\mcp-rig\projects
 #
+# 硬要求: PowerShell 7.1+ (PS 5.1 不兼容, preflight 拦)
 # 必传: -UserName / -ServerDir / -Sandbox (路径不固定, 防误装)
 # 选传: -GitToken (私有仓 clone 需 PAT)
 #
@@ -58,9 +59,10 @@ function Test-Preflight {
         openssh   = $false
         internet  = $false
     }
-    $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7
+    $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 1
     if (-not $report.pwsh) {
-        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), 推荐 winget install Microsoft.PowerShell"
+        # pwsh 7.1+ 是硬要求, 下面 throw 兜底
+        Write-Verbose "PowerShell 7.1+ 未装 (当前 $($PSVersionTable.PSVersion))"
     }
 
     $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -103,10 +105,10 @@ function Test-Preflight {
         Write-Error "无网络 (github.com 不可达), 检查代理/DNS"
     }
     if ($missing -contains "pwsh") {
-        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
+        Write-Error "缺 PowerShell 7.1+ — 装: winget install --id Microsoft.PowerShell -e"
     }
 
-    if ($missing -match "python|git|internet") {
+    if ($missing -match "python|git|internet|pwsh") {
         throw "Preflight 失败, 请先补齐上面缺失项再跑"
     }
 }
@@ -258,3 +260,6 @@ Write-Host ""
 Write-Host "  3. 主机首次 SSH 验握手:" -ForegroundColor Yellow
 Write-Host "       ssh -o StrictHostKeyChecking=accept-new $UserName@<rig-host>" -ForegroundColor Yellow
 Write-Host "  4. 重启主机 Claude Code, /mcp 看 rig connected." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "出错留日志 (pwsh 7 才支持 *>&1):" -ForegroundColor Yellow
+Write-Host "   .\install.ps1 ...args... *>&1 | Tee-Object -FilePath C:\install.log" -ForegroundColor Yellow
