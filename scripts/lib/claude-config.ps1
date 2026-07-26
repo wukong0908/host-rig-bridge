@@ -1,4 +1,4 @@
-# claude-config.ps1 — ~/.claude.json 读写工具
+﻿# claude-config.ps1 — ~/.claude.json 读写工具
 # 供 setup-host.ps1 / register-rig.ps1 复用
 
 function Add-McprigServer {

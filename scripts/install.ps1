@@ -1,4 +1,4 @@
-# install.ps1 — Windows 外机一次性 setup (等价 Linux install.sh)
+﻿# install.ps1 — Windows 外机一次性 setup (等价 Linux install.sh)
 # 用法 (管理员 PowerShell 7, 在外机上跑):
 #   iwr -useb https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.ps1 | iex
 # 或:

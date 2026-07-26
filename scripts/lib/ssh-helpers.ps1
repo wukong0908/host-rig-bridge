@@ -1,4 +1,4 @@
-# ssh-helpers.ps1 — 共享 SSH 工具函数
+﻿# ssh-helpers.ps1 — 共享 SSH 工具函数
 # 供 setup-host.ps1 / register-rig.ps1 / verify.ps1 复用
 
 function Test-SshBatchMode {

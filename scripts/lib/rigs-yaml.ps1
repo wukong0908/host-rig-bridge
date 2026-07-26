@@ -1,4 +1,4 @@
-# rigs-yaml.ps1 — rigs.local.yaml 极简解析 (无 yq/PowerShell-Yaml 依赖)
+﻿# rigs-yaml.ps1 — rigs.local.yaml 极简解析 (无 yq/PowerShell-Yaml 依赖)
 # 供 register-rig.ps1 / watchdog/host-rig-watchdog.ps1 复用
 # 支持字段: alias / host / user / key / sandbox / server / venv / capabilities / tools / notes
 # 注释/嵌套/锚点不支持 — 主人手工维护

@@ -1,4 +1,4 @@
-# feishu-notify.ps1 — host-rig-bridge watchdog 飞书薄封装
+﻿# feishu-notify.ps1 — host-rig-bridge watchdog 飞书薄封装
 # 复用 ~/.claude/scripts/feishu.ps1 wrapper, 不重写
 # 失败: stderr 打印 + 不抛 (守护不因告警失败停)
 

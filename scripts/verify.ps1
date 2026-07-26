@@ -1,4 +1,4 @@
-# verify.ps1 - 验证 host-rig-bridge 全链路 (单 rig, Windows 外机)
+﻿# verify.ps1 - 验证 host-rig-bridge 全链路 (单 rig, Windows 外机)
 # 跑法: "C:\Program Files\PowerShell\7\pwsh.exe" -ExecutionPolicy Bypass -NoProfile -File verify.ps1 -Rig rig
 #
 # 注意: mcp-rig 账号的 authorized_keys 配了 forced command = MCP server,

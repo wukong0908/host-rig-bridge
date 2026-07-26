@@ -1,4 +1,4 @@
-# install-watchdog.ps1 — 一键注册 Windows 计划任务 host-rig-watchdog
+﻿# install-watchdog.ps1 — 一键注册 Windows 计划任务 host-rig-watchdog
 # SYSTEM + Highest + AtStartup + RepetitionInterval 5min + RepetitionDuration 3650d
 # RestartCount 3 + RestartInterval 1min
 # 幂等: 已注册跳过

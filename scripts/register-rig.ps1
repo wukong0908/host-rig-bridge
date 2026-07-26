@@ -1,4 +1,4 @@
-# register-rig.ps1 — 主机侧: 一条命令注册一台分机 (key + SSH config + mcpServers)
+﻿# register-rig.ps1 — 主机侧: 一条命令注册一台分机 (key + SSH config + mcpServers)
 # 跑法 (任一):
 #   pwsh register-rig.ps1 -RigAlias rig                                   # 缺参从 rigs.local.yaml 读
 #   pwsh register-rig.ps1                                                # 跑 rigs.local.yaml 全清单

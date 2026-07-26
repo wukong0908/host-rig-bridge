@@ -1,4 +1,4 @@
-# host-rig-watchdog.ps1 — 主机侧分机诊断守护
+﻿# host-rig-watchdog.ps1 — 主机侧分机诊断守护
 # 4 类探针: SSH 连通 / MCP server 进程 / 沙箱磁盘 / 主机 claude.json 注册
 # 异常 → feishu-notify.ps1 + 1h 内同告警去重 (state/<rig>.<level>.<hash>.last_sent)
 # 计划任务: 5min 一次, SYSTEM + Highest + RestartCount 3

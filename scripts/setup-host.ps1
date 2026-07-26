@@ -1,4 +1,4 @@
-# setup-host.ps1 — 主机一次性 setup (兼容老路径, 推荐用 register-rig.ps1)
+﻿# setup-host.ps1 — 主机一次性 setup (兼容老路径, 推荐用 register-rig.ps1)
 # 现在等价于: register-rig.ps1 -RigAlias rig -RigHost <ip> -RigUser mcp-rig
 # 推荐做法: 编辑 ~/.claude/host-rig-bridge/rigs.local.yaml, 然后跑 register-rig.ps1
 #

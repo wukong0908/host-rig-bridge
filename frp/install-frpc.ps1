@@ -1,4 +1,4 @@
-# install-frpc.ps1 — 主机侧下载 frpc + 注册计划任务
+﻿# install-frpc.ps1 — 主机侧下载 frpc + 注册计划任务
 # 跑法 (管理员 PowerShell 7):
 #   "C:\Program Files\PowerShell\7\pwsh.exe" -ExecutionPolicy Bypass -NoProfile -File install-frpc.ps1
 
