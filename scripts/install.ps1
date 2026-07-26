@@ -6,6 +6,7 @@
 #   .\install.ps1 -UserName mcp-rig
 #
 # 行为:
+#   0. Preflight 体检 (pwsh / python / git / OpenSSH / 网络)
 #   1. 建 mcp-rig 本地账号 (密码 = 随机 GUID, 只走 pubkey)
 #   2. 建 server 目录 C:\Users\mcp-rig\mcp-server
 #   3. git clone 拉代码
@@ -40,7 +41,70 @@ function Assert-Admin {
     }
 }
 
+function Test-Preflight {
+    # 体检: pwsh 版本 / Python / git / OpenSSH capability / 网络
+    $report = [ordered]@{
+        pwsh      = $false
+        python    = $false
+        git       = $false
+        openssh   = $false
+        internet  = $false
+    }
+    $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7
+    if (-not $report.pwsh) {
+        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), 推荐 winget install Microsoft.PowerShell"
+    }
+
+    $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
+    $pyAbs = "C:\Users\$UserName\AppData\Local\Python\bin\python.exe"
+    if ($pyCmd -or (Test-Path $pyAbs)) { $report.python = $true }
+
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd) { $report.git = $true }
+
+    $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
+    if ($sshCap -and $sshCap.State -in @("Installed", "InstallPending")) {
+        $report.openssh = $true
+    }
+
+    try {
+        $null = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 10 -Method Head
+        $report.internet = $true
+    } catch {
+        $report.internet = $false
+    }
+
+    Write-Host ""
+    Write-Host "=== Preflight 体检 ===" -ForegroundColor Cyan
+    foreach ($k in $report.Keys) {
+        $mark = if ($report[$k]) { "✓" } else { "✗" }
+        $color = if ($report[$k]) { "Green" } else { "Red" }
+        Write-Host ("  {0} {1}" -f $mark, $k) -ForegroundColor $color
+    }
+    Write-Host ""
+
+    $missing = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" } | ForEach-Object { $_.Key }
+    # openssh 缺可自动装 (stage 6), 不算 fatal
+    if ($missing -contains "python") {
+        Write-Error "缺 Python — 装: winget install --id Python.Python.3.13 -e"
+    }
+    if ($missing -contains "git") {
+        Write-Error "缺 git — 装: winget install --id Git.Git -e"
+    }
+    if ($missing -contains "internet") {
+        Write-Error "无网络 (github.com 不可达), 检查代理/DNS"
+    }
+    if ($missing -contains "pwsh") {
+        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
+    }
+
+    if ($missing -match "python|git|internet") {
+        throw "Preflight 失败, 请先补齐上面缺失项再跑"
+    }
+}
+
 Assert-Admin
+Test-Preflight
 
 Write-Host "==========================================="
 Write-Host " host-rig-bridge Windows 外机安装"
@@ -52,7 +116,7 @@ Write-Host "repo:    $Repo @ $Branch"
 Write-Host ""
 
 # 1. 本地账号
-Write-Stage 1 7 "建本地账号 $UserName (无密码, OpenSSH 用)"
+Write-Stage 1 8 "建本地账号 $UserName (无密码, OpenSSH 用)"
 if (Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue) {
     Write-Host "    账号已存在, 跳过"
 } else {
@@ -64,7 +128,7 @@ if (Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue) {
 }
 
 # 2. server 目录
-Write-Stage 2 7 "建 server 目录 + .ssh"
+Write-Stage 2 8 "建 server 目录 + .ssh"
 New-Item -ItemType Directory -Path $ServerDir -Force | Out-Null
 New-Item -ItemType Directory -Path "C:\Users\$UserName\.ssh" -Force | Out-Null
 # icacls 域限定 (本地账号 + 计算机名) 防极少数上下文解析失败
@@ -72,7 +136,7 @@ $acct = "$env:COMPUTERNAME\$UserName"
 icacls "C:\Users\$UserName\.ssh" /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 
 # 3. git clone
-Write-Stage 3 7 "git clone $Repo @ $Branch → $ServerDir\src"
+Write-Stage 3 8 "git clone $Repo @ $Branch → $ServerDir\src"
 if (Test-Path "$ServerDir\src\.git") {
     Write-Host "    已存在, 跳过"
 } else {
@@ -91,7 +155,7 @@ if (Test-Path "$ServerDir\src\.git") {
 }
 
 # 4. venv + pip
-Write-Stage 4 7 "建 venv + 装 mcp[server]"
+Write-Stage 4 8 "建 venv + 装 mcp[server]"
 if (-not (Test-Path "$ServerDir\.venv")) {
     # 三种探测, 任一可用: py 启动器 / python 绝对路径 / PATH python
     $py = $null
@@ -119,12 +183,12 @@ $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import
 Write-Host "    $ok"
 
 # 5. 沙箱
-Write-Stage 5 7 "建沙箱 $Sandbox"
+Write-Stage 5 8 "建沙箱 $Sandbox"
 New-Item -ItemType Directory -Path $Sandbox -Force | Out-Null
 icacls $Sandbox /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 
 # 6. OpenSSH Server
-Write-Stage 6 7 "装/启 OpenSSH Server"
+Write-Stage 6 8 "装/启 OpenSSH Server"
 $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
 if ($openssh.State -ne "Installed") {
     Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
@@ -139,7 +203,7 @@ if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -ErrorAction SilentlyConti
 }
 
 # 7. sshd_config 锁 (匹配 examples/authorized-keys 假设)
-Write-Stage 7 7 "配 sshd_config (PasswordAuthentication no, PubkeyAuthentication yes)"
+Write-Stage 7 8 "配 sshd_config (PasswordAuthentication no, PubkeyAuthentication yes)"
 $sshdConf = "$env:ProgramData\ssh\sshd_config"
 $backup = "$sshdConf.bak.$(Get-Date -Format yyyyMMdd)"
 if (-not (Test-Path $backup)) { Copy-Item $sshdConf $backup -Force }
