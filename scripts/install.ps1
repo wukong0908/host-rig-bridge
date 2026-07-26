@@ -63,7 +63,8 @@ function Test-Preflight {
     }
     $report.pwsh = $PSVersionTable.PSVersion.Major -ge 7
     if (-not $report.pwsh) {
-        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), 推荐 winget install Microsoft.PowerShell"
+        # BOM 已加, PS 5.1 能跑中文, 不算 fatal — 但 pwsh 7 体验更好
+        Write-Verbose "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), BOM 兜底中文解析"
     }
 
     $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -101,13 +102,13 @@ function Test-Preflight {
         throw "Preflight 失败: 无网络"
     }
 
-    # 可自动装的映射
+    # 可自动装的映射 (pwsh 7 推荐但不 fatal — PS 5.1 + BOM 已能跑)
     $installMap = [ordered]@{
-        python = @{ Id = "Python.Python.3.13"; Name = "Python 3.13 (latest stable)" }
-        git    = @{ Id = "Git.Git";          Name = "Git for Windows" }
-        pwsh   = @{ Id = "Microsoft.PowerShell"; Name = "PowerShell 7" }
+        python = @{ Id = "Python.Python.3.13"; Name = "Python 3.13 (latest stable)"; Fatal = $true }
+        git    = @{ Id = "Git.Git";          Name = "Git for Windows";                Fatal = $true }
+        pwsh   = @{ Id = "Microsoft.PowerShell"; Name = "PowerShell 7 (推荐, 非 fatal)"; Fatal = $false }
     }
-    $toInstall = @($missing | Where-Object { $installMap.Contains($_) })
+    $toInstall = @($missing | Where-Object { $installMap.Contains($_) -and $installMap[$_].Fatal })
 
     if ($toInstall.Count -gt 0) {
         Write-Host ""
@@ -160,7 +161,10 @@ function Test-Preflight {
             Write-Host ("  {0} {1}" -f $mark, $k) -ForegroundColor $color
         }
 
-        $stillBad = $report.GetEnumerator() | Where-Object { -not $_.Value -and $_.Key -ne "openssh" -and $_.Key -ne "internet" } | ForEach-Object { $_.Key }
+        # 仅 fatal 项 (pwsh 7 非 fatal — BOM 兜底)
+        $stillBad = $report.GetEnumerator() | Where-Object {
+            -not $_.Value -and $_.Key -ne "openssh" -and $_.Key -ne "internet" -and $_.Key -ne "pwsh"
+        } | ForEach-Object { $_.Key }
         if ($stillBad.Count -gt 0) {
             Write-Host ""
             Write-Warning "仍有缺失: $($stillBad -join ', '). 通常需重开 PowerShell 让 PATH 生效后重跑 install.ps1"
@@ -168,8 +172,9 @@ function Test-Preflight {
         }
     }
 
-    if ($missing -match "pwsh") {
-        Write-Warning "PowerShell 7 未装, 后面 .ps1 可能 GBK 解析中文失败 (BOM 已加, 但建议装 7)"
+    # pwsh 7 推荐但不 fatal — 警告即可
+    if (-not $report.pwsh) {
+        Write-Warning "PowerShell 7 未装 (当前 $($PSVersionTable.PSVersion)), BOM 已加可继续; 推荐 winget install --id Microsoft.PowerShell"
     }
 }
 
