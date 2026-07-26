@@ -132,6 +132,67 @@ rigs:                               # 必填, 数组
 - `health_check` — 周期性自检(由 watchdog 用), 而非外部探针
 - `notify` — 告警通道覆盖(默认走主机 watchdog, 也可单 rig 单独推)
 
+## register-rig 加载规则
+
+`scripts/register-rig.ps1` 优先级:
+
+1. **命令行参数** (`-RigHost` / `-RigUser` 等) — 覆盖 yaml
+2. **yaml 文件** (`~/.claude/host-rig-bridge/rigs.local.yaml`) — 默认源
+3. **报错退出** — 关键字段缺失
+
+跑法:
+
+```powershell
+# 跑 yaml 全清单
+pwsh scripts/register-rig.ps1
+
+# 跑单台 (yaml 没找到时命令行兜底)
+pwsh scripts/register-rig.ps1 -RigAlias rig -RigHost 1.2.3.4 -RigUser mcp-rig
+
+# 跑单台 (yaml 已有, 命令行覆盖 host)
+pwsh scripts/register-rig.ps1 -RigAlias rig -RigHost 10.0.0.1
+```
+
+setup-host.ps1 现在等价于 `register-rig.ps1 -RigAlias rig -RigHost <ip> -RigUser mcp-rig`(薄壳, 兼容老用法)。
+
+## key_rotation SOP
+
+主人电脑单 key 多账号。**半年一次**轮换, 步骤:
+
+1. **生成新 key**:
+   ```powershell
+   ssh-keygen -t ed25519 -f $HOME\.ssh\id_claude_mcp.2026H2 -N "" -C "claude-mcp@$env:COMPUTERNAME-2026H2"
+   ```
+
+2. **追加到外机 authorized_keys**(老 key 不删):
+   ```bash
+   # 外机 root
+   sudo -u mcp-rig tee -a /home/mcp-rig/.ssh/authorized_keys <<< '<新公钥>'
+   ```
+
+3. **测通**(确保新 key 可登):
+   ```powershell
+   ssh -i $HOME\.ssh\id_claude_mcp.2026H2 -o IdentitiesOnly=yes rig "echo OK"
+   ```
+
+4. **切换主机默认 key**(`register-rig.ps1` 加 `-RigKey <新key路径>` 重跑, 或直接改 yaml 的 `key` 字段)。
+
+5. **老 key 从外机删**:
+   ```bash
+   # 外机 root
+   sudo -u mcp-rig sed -i '/2026H1/d' /home/mcp-rig/.ssh/authorized_keys
+   ```
+
+6. **主机本地删**:
+   ```powershell
+   Remove-Item $HOME\.ssh\id_claude_mcp.2026H1, $HOME\.ssh\id_claude_mcp.2026H1.pub
+   ```
+
+**不要做**:
+- 不要给 key 加 passphrase(主人单用户场景, 加了 Claude / 守护脚本无法解)
+- 不要不同 rig 不同 key(配置简单性优于隔离)
+- 不要把 `~/.claude/host-rig-bridge/` 入仓(yaml 里有主机 IP / 内网段)
+
 ## 下一步
 
 - 异步任务接口契约: [`04-async-tasks.md`](./04-async-tasks.md)

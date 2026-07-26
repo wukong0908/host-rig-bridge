@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
-# setup-rig.sh — 外机一次性 setup (兼容老路径, 推荐用 install.sh)
-# 用法: sudo bash setup-rig.sh
-# 与 install.sh 区别: 本脚本期望 server.py 已通过 scp 传过来, 不走 git clone.
-# 保留为旧用法兼容入口, 新部署走 install.sh.
+# setup-rig.sh — DEPRECATED, 推荐用 install.sh
+# ┌────────────────────────────────────────────────────────┐
+# │ ⚠️  本脚本为旧用法兼容入口, 新部署请走 install.sh:        │
+# │                                                        │
+# │   curl -fsSL https://raw.githubusercontent.com/ \      │
+# │       wukong0908/host-rig-bridge/main/scripts/install.sh│
+# │       | bash -s -- --user mcp-rig                       │
+# │                                                        │
+# │ 与 install.sh 区别: 本脚本期望 server.py 已通过 scp    │
+# │ 传过来 (/tmp/server.py), 不走 git clone.                │
+# │ 保留为旧用法兼容入口, 后续 Phase E 会删除.               │
+# └────────────────────────────────────────────────────────┘
 set -euo pipefail
+
+echo "⚠️  setup-rig.sh DEPRECATED. 推荐用 install.sh:"
+echo "    curl -fsSL https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install.sh | bash -s -- --user mcp-rig"
+echo ""
 
 RIG_USER="${RIG_USER:-mcp-rig}"
 SERVER_DIR="/home/${RIG_USER}/mcp-server"
