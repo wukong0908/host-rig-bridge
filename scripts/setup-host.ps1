@@ -35,7 +35,8 @@ Write-Host "╚═════════════════════�
 Write-Host ""
 Write-Host "参数:" -ForegroundColor Cyan
 Write-Host "  VPS:         $Vps"
-Write-Host "  frp token:   $($FrpToken.Substring(0, [Math]::Min(8, $FrpToken.Length))..."
+$tokenPreview = if ($FrpToken.Length -gt 8) { $FrpToken.Substring(0, 8) + "..." } else { $FrpToken }
+Write-Host "  frp token:   $tokenPreview"
 Write-Host "  remote port: $RemotePort"
 Write-Host ""
 
