@@ -1,10 +1,10 @@
 # setup-host.ps1 — 主机一次性 setup (链路 B 第一阶段)
 # 用法 (PowerShell 7.1+):
-#   pwsh scripts/setup-host.ps1
+#   pwsh scripts/setup-host.ps1 -Vps 8.163.106.31 -FrpToken "<token>" -RemotePort 6001
 #
 # 目的:
 #   1. 生成主机 SSH key (id_claude_mcp, ed25519, 无 passphrase)
-#   2. 输出主机公钥 (永久; 以后所有外机共享)
+#   2. 输出可直接复制到外机的一键命令块 (env var 已填好)
 #
 # 行为 (幂等):
 #   - key 已存在 → 跳过生成, 复用
@@ -13,11 +13,17 @@
 # 不写 ~/.claude.json mcpServers (那是加外机时 register-rig 的事)
 # 不写 ~/.ssh/config Host 段 (同上)
 #
-# 跑完输出主机公钥 + forced command 模板, 主人复制带去外机用.
+# 跑完输出整段外机一键命令, 主人复制粘贴到外机跑即可.
 
 [CmdletBinding()]
 param(
-    [string]$KeyPath = "$HOME\.ssh\id_claude_mcp"
+    [string]$KeyPath = "$HOME\.ssh\id_claude_mcp",
+    [Parameter(Mandatory)]
+    [string]$Vps,
+    [Parameter(Mandatory)]
+    [string]$FrpToken,
+    [Parameter(Mandatory)]
+    [int]$RemotePort
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +33,10 @@ Write-Host "╔═════════════════════�
 Write-Host "║          host-rig-bridge 主机 setup                          ║" -ForegroundColor Cyan
 Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "目的: 生成主机 SSH key (链路 B 第一阶段)" -ForegroundColor Cyan
+Write-Host "参数:" -ForegroundColor Cyan
+Write-Host "  VPS:         $Vps"
+Write-Host "  frp token:   $($FrpToken.Substring(0, [Math]::Min(8, $FrpToken.Length))..."
+Write-Host "  remote port: $RemotePort"
 Write-Host ""
 
 # 1. SSH dir
@@ -50,41 +59,38 @@ if (Test-Path $KeyPath) {
 
 $pubKey = Get-Content "$KeyPath.pub" -Raw
 
-# 3. 输出公钥 + forced command 模板
+# forced command 模板
+$forcedCmd = 'command="C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -u C:/Users/mcp-rig/mcp-server/src/server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty'
+
+# 完整外机一键命令块 (env var 已填好, 主人直接复制)
+$rigCmd = @"
+`$env:RIG_VPS         = '$Vps'
+`$env:RIG_FRP_TOKEN   = '$FrpToken'
+`$env:RIG_REMOTE_PORT = '$RemotePort'
+`$env:RIG_HOST_PUBKEY = '$forcedCmd $($pubKey.Trim())'
+
+iex (iwr -useb 'https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install-rig-bundle.ps1').Content
+"@
+
+# 3. 输出
 Write-Host ""
-Write-Host "[3/3] 输出主机公钥 (永久, 以后所有外机共享)" -ForegroundColor Cyan
+Write-Host "[3/3] 主机公钥 + 外机一键命令 (整段复制)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "==== 主机公钥 BEGIN ====" -ForegroundColor Yellow
 Write-Host $pubKey.Trim() -ForegroundColor Yellow
 Write-Host "==== 主机公钥 END ====" -ForegroundColor Yellow
 Write-Host ""
-
-# forced command 模板 — 主人按外机真实路径填
-$forcedCmd = 'command="C:/Users/mcp-rig/mcp-server/.venv/Scripts/python.exe -u C:/Users/mcp-rig/mcp-server/src/server/server.py",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty'
-
-Write-Host "==== forced command 模板 BEGIN ====" -ForegroundColor Yellow
-Write-Host $forcedCmd -ForegroundColor Yellow
-Write-Host "==== forced command 模板 END ====" -ForegroundColor Yellow
+Write-Host "==== 外机一键命令 BEGIN (复制以下整段到外机管理员 PowerShell 粘贴跑) ====" -ForegroundColor Yellow
 Write-Host ""
-
-Write-Host "下一步 (主人手动):" -ForegroundColor Cyan
-Write-Host "  1. 把下面'<FILL_VPS>' / '<FILL_TOKEN>' / '<FILL_PORT>' 替换成真实值 (VPS 用 8.163.106.31, token 同家里 frpc, port 选 6001)" -ForegroundColor Cyan
-Write-Host "  2. 整段复制到外机 (管理员 PowerShell) 粘贴跑" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "==== 外机一键命令 BEGIN (复制以下整段到外机) ====" -ForegroundColor Yellow
-Write-Host ""
-Write-Host ('$env:RIG_VPS         = ''<FILL_VPS>''')
-Write-Host ('$env:RIG_FRP_TOKEN   = ''<FILL_TOKEN>''')
-Write-Host ('$env:RIG_REMOTE_PORT = ''<FILL_PORT>''')
-Write-Host ('$env:RIG_HOST_PUBKEY = ''{0} {1}''' -f $forcedCmd, $pubKey.Trim())
-Write-Host ""
-Write-Host "iex (iwr -useb 'https://raw.githubusercontent.com/wukong0908/host-rig-bridge/main/scripts/install-rig-bundle.ps1').Content"
+Write-Host $rigCmd -ForegroundColor Yellow
 Write-Host ""
 Write-Host "==== 外机一键命令 END ====" -ForegroundColor Yellow
 Write-Host ""
+
 Write-Host "外机跑完后 (10 min), 回主机加外机:" -ForegroundColor Cyan
-Write-Host "       pwsh scripts/register-rig.ps1 -RigAlias <alias> -RigHost <VPS> -RigPort <port> -RigUser mcp-rig" -ForegroundColor Cyan
+Write-Host "       pwsh scripts/register-rig.ps1 -RigAlias rig -RigHost $Vps -RigPort $RemotePort -RigUser mcp-rig" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "模板 (每加一台外机, 替换 <FILL_PORT>):" -ForegroundColor DarkGray
-Write-Host "       rig1: 6001    rig2: 6002    rig3: 6003 ..." -ForegroundColor DarkGray
+
+Write-Host "以后再加外机 (port 用 6002/6003...):" -ForegroundColor DarkGray
+Write-Host "       pwsh scripts/setup-host.ps1 -Vps $Vps -FrpToken '<同 token>' -RemotePort 6002" -ForegroundColor DarkGray
 Write-Host ""
