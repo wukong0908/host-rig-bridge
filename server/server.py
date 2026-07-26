@@ -6,8 +6,20 @@
 所有沙箱/白名单/env 净化走 sandbox.py.
 所有审计走 audit.py.
 所有 sqlite 走 tasks_store.py.
+
+走法: 既支持 'python -m server' (相对导入), 也支持 forced command
+绝对路径 'python -u server.py' (sys.path 兜底). 下面 sys.path 兼容两种.
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# 兼容 forced command 走绝对路径: 把本文件所在目录 (server/) 加 sys.path,
+# 让绝对导入 audit/sandbox/tasks/tasks_store 能找到.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
 
 import asyncio
 import json
@@ -16,8 +28,10 @@ from hashlib import sha256
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, sandbox, tasks
-from .tasks_store import init_db
+import audit
+import sandbox
+import tasks
+from tasks_store import init_db
 
 # 启动时 init tasks db
 init_db()

@@ -176,7 +176,8 @@ if (-not (Test-Path "$ServerDir\.venv")) {
     & $py.Path $py.Arg -m venv "$ServerDir\.venv"
 }
 & "$ServerDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
-& "$ServerDir\.venv\Scripts\python.exe" -m pip install "$ServerDir\src\server" --quiet
+# 装 mcp[server] SDK (不强装本地 server 包, 避免 src layout 找不到 server/server/)
+& "$ServerDir\.venv\Scripts\python.exe" -m pip install "mcp[server]~=1.10" --quiet
 
 # 验证 SDK
 $ok = & "$ServerDir\.venv\Scripts\python.exe" -c "from mcp.server.fastmcp import FastMCP; print('mcp SDK OK')"

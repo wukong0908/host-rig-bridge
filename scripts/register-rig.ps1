@@ -116,6 +116,8 @@ Write-Host "  1. 把上面公钥贴到外机 $($targets[0].host) authorized_keys
 Write-Host "     外机 (管理员 PowerShell):" -ForegroundColor Yellow
 foreach ($r in $targets) {
     $cmd = "command=`"$($r.venv)/Scripts/python.exe -u $($r.server)`",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $($pubKey.Trim())"
+    # 注: forced command 用绝对路径 $r.server (C:\Users\mcp-rig\mcp-server\src\server\server.py),
+    #     server.py 内部 sys.path.insert(0, ...) 已加, 不依赖 pip install 本地包
     Write-Host "       Add-Content -Path C:\Users\$($r.user)\.ssh\authorized_keys -Value '$cmd'" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  2. 首次 SSH 验握手 (rig '$($r.alias)'):" -ForegroundColor Yellow
