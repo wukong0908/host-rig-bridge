@@ -72,9 +72,16 @@ function Test-Preflight {
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd) { $report.git = $true }
 
-    $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
-    if ($sshCap -and $sshCap.State -in @("Installed", "InstallPending")) {
-        $report.openssh = $true
+    # OpenSSH 检测 — Get-WindowsCapability 不一定可用 (某些 Win10 LTSC / 精简版没注册)
+    try {
+        $sshCap = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction Stop
+        if ($sshCap.State -in @("Installed", "InstallPending")) {
+            $report.openssh = $true
+        }
+    } catch {
+        # fallback: 看 sshd 服务是否在 (装着就算有)
+        $sshSvc = Get-Service sshd -ErrorAction SilentlyContinue
+        if ($sshSvc) { $report.openssh = $true }
     }
 
     try {
@@ -223,14 +230,30 @@ icacls $Sandbox /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" |
 
 # 6. OpenSSH Server
 Write-Stage 6 8 "装/启 OpenSSH Server"
-$openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction SilentlyContinue
-if ($openssh.State -ne "Installed") {
-    Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
-} else {
-    Write-Host "    OpenSSH Server 已装"
+$installed = $false
+try {
+    $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -ErrorAction Stop
+    if ($openssh.State -ne "Installed") {
+        Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
+    } else {
+        $installed = $true
+        Write-Host "    OpenSSH Server 已装 (Get-WindowsCapability)"
+    }
+} catch {
+    # Get-WindowsCapability 不可用 (Win10 LTSC / 精简版 / server core 没注册类)
+    # fallback: 用 winget 装 Microsoft.OpenSSH.Beta
+    Write-Host "    Get-WindowsCapability 不可用, 用 winget 装 OpenSSH" -ForegroundColor Yellow
+    $proc = Start-Process -FilePath "winget" `
+        -ArgumentList @("install", "--id", "Microsoft.OpenSSH.Beta", "-e", "--source", "winget", `
+                        "--accept-package-agreements", "--accept-source-agreements") `
+        -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        throw "winget install OpenSSH 失败, exit=$($proc.ExitCode); 手动装: Settings → Apps → Optional Features → OpenSSH Server"
+    }
+    $installed = $true
 }
-Set-Service -Name sshd -StartupType Automatic
-Start-Service sshd
+Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
+Start-Service sshd -ErrorAction SilentlyContinue
 # 防火墙放行 (若启用)
 if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -ErrorAction SilentlyContinue) {
     Enable-NetFirewallRule -Name "OpenSSH-Server-In-TCP" | Out-Null
