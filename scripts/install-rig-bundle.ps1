@@ -238,12 +238,8 @@ function New-ServerDirs {
         New-Item -ItemType Directory -Path $ServerDir -Force | Out-Null
     }
     if (-not (Test-Path $SshDir)) {
-        V "mkdir $SshDir"
+        V "mkdir $SshDir (用 Windows 默认 ACL,不动 icacls — 默认已够 OpenSSH 读 authorized_keys)"
         New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
-        $acct = "$env:COMPUTERNAME\$UserName"
-        # 给 Administrators 完全控制权 (避免后续 takeown 链),mcp-rig:F 给自己管自己的文件
-        V "icacls .ssh (Administrators:F + $acct:F + SYSTEM:F)"
-        icacls $SshDir /inheritance:r /grant:r "BUILTIN\Administrators:(OI)(CI)F" "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
     } else {
         V "$SshDir 已存在"
     }
@@ -300,27 +296,18 @@ function Install-McpVenv {
 }
 
 function Write-AuthorizedKey {
-    $acct = "$env:COMPUTERNAME\$UserName"
-
-    # 深度防御: takeown 不可靠 + icacls grant ${env:USERNAME} 在 PS 里展开成 wukong 失败。
-    # 直接用 BUILTIN\Administrators (固定 SID 字符串,跨语言稳),叠加 grant 不替换。
-    V "icacls 临时叠加 Administrators:F 到 .ssh 目录 (绕开 takeown)"
-    icacls $SshDir /grant "BUILTIN\Administrators:(OI)(CI)F" 2>&1 | Out-Null
+    if (-not (Test-Path $SshDir)) {
+        New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
+    }
 
     if (Test-Path $AkPath) {
-        V "删除旧 authorized_keys"
+        V "删旧 authorized_keys (管理员有 F 默认权限,直接删)"
         Remove-Item -Path $AkPath -Force 2>&1 | Out-Null
     }
 
-    V "Set-Content authorized_keys (UTF8 无 BOM)"
+    V "写 authorized_keys (UTF8 无 BOM,Windows 默认 ACL 自动应用)"
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($AkPath, $HostPubkey + "`r`n", $utf8NoBom)
-
-    V "icacls 锁 authorized_keys (限 $acct:R + SYSTEM:R + Administrators:F)"
-    icacls $AkPath /inheritance:r /grant:r "${acct}:(R)" "SYSTEM:(R)" "BUILTIN\Administrators:(RW)" | Out-Null
-
-    V "icacls 锁 .ssh 目录 (Administrators:F + $acct:F + SYSTEM:F)"
-    icacls $SshDir /inheritance:r /grant:r "BUILTIN\Administrators:(OI)(CI)F" "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 }
 
 function Install-FrpcService {
