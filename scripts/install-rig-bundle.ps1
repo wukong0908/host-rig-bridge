@@ -241,8 +241,9 @@ function New-ServerDirs {
         V "mkdir $SshDir"
         New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
         $acct = "$env:COMPUTERNAME\$UserName"
-        V "icacls .ssh (限 $acct + SYSTEM)"
-        icacls $SshDir /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+        # 给 Administrators 完全控制权 (避免后续 takeown 链),mcp-rig:F 给自己管自己的文件
+        V "icacls .ssh (Administrators:F + $acct:F + SYSTEM:F)"
+        icacls $SshDir /inheritance:r /grant:r "BUILTIN\Administrators:(OI)(CI)F" "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
     } else {
         V "$SshDir 已存在"
     }
@@ -301,17 +302,10 @@ function Install-McpVenv {
 function Write-AuthorizedKey {
     $acct = "$env:COMPUTERNAME\$UserName"
 
-    # 深度防御: .ssh 目录本身被 stage 3 锁成 mcp-rig:SYSTEM only,管理员无写权 → 创建文件也失败。
-    # 流程: 先 takeown 目录 + 文件 → 放开管理员 RW → 删除/重建 → 锁回去
-    V "takeown .ssh 目录 + authorized_keys"
-    takeown /F $SshDir /A /R /D Y 2>&1 | Out-Null
-    takeown /F $AkPath /A 2>&1 | Out-Null
-
-    V "icacls 放开管理员 RW (临时)"
-    icacls $SshDir /grant "${env:USERNAME}:(OI)(CI)F" 2>&1 | Out-Null
-    if (Test-Path $AkPath) {
-        icacls $AkPath /grant "${env:USERNAME}:(RW)" 2>&1 | Out-Null
-    }
+    # 深度防御: takeown 不可靠 + icacls grant ${env:USERNAME} 在 PS 里展开成 wukong 失败。
+    # 直接用 BUILTIN\Administrators (固定 SID 字符串,跨语言稳),叠加 grant 不替换。
+    V "icacls 临时叠加 Administrators:F 到 .ssh 目录 (绕开 takeown)"
+    icacls $SshDir /grant "BUILTIN\Administrators:(OI)(CI)F" 2>&1 | Out-Null
 
     if (Test-Path $AkPath) {
         V "删除旧 authorized_keys"
@@ -322,13 +316,11 @@ function Write-AuthorizedKey {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($AkPath, $HostPubkey + "`r`n", $utf8NoBom)
 
-    V "icacls 锁 authorized_keys (限 $acct:R + SYSTEM:R)"
-    icacls $AkPath /inheritance:r /grant:r "${acct}:(R)" "SYSTEM:(R)" | Out-Null
-    icacls $AkPath /remove "(${env:COMPUTERNAME}\${env:USERNAME})" 2>&1 | Out-Null
+    V "icacls 锁 authorized_keys (限 $acct:R + SYSTEM:R + Administrators:F)"
+    icacls $AkPath /inheritance:r /grant:r "${acct}:(R)" "SYSTEM:(R)" "BUILTIN\Administrators:(RW)" | Out-Null
 
-    V "icacls 锁 .ssh 目录 (限 $acct:F + SYSTEM:F)"
-    icacls $SshDir /inheritance:r /grant:r "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
-    icacls $SshDir /remove "(${env:COMPUTERNAME}\${env:USERNAME})" 2>&1 | Out-Null
+    V "icacls 锁 .ssh 目录 (Administrators:F + $acct:F + SYSTEM:F)"
+    icacls $SshDir /inheritance:r /grant:r "BUILTIN\Administrators:(OI)(CI)F" "${acct}:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 }
 
 function Install-FrpcService {
