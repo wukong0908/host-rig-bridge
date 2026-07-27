@@ -19,7 +19,7 @@
 [CmdletBinding()]
 param([switch]$Verify, [switch]$Status, [switch]$Force)
 
-$ScriptVersion = "0.9.7"
+$ScriptVersion = "0.9.8"
 # commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
 # iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
@@ -158,17 +158,18 @@ function Show-NextSteps {
 # ===== stage 函数 =====
 
 function Install-OpenSsh {
-    Step-In 1 "1 检查 OpenSSH 是否已装"
-    try {
-        $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -EA Stop
-        if ($openssh.State -ne "Installed") {
-            Step-In 1 "2 装 OpenSSH (60-180s)"
-            Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
-        } else { Step-In 1 "2 已装,跳过" }
-    } catch {
-        Step-In 1 "2 退到 DISM (60-180s)"
-        $out = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE). 手动装: Settings → Apps → Optional Features → OpenSSH Server" }
+    Step-In 1 "1 检查 OpenSSH 是否已装 (dism, ~200ms)"
+    # dism 比 Get-WindowsCapability 快 600x (实测 210ms vs 134s)
+    $dismOut = dism /online /get-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "dism /get-capability 失败 (exit=$LASTEXITCODE):$dismOut" }
+    if ($dismOut -match "Installed") {
+        Step-In 1 "2 已装,跳过"
+    } else {
+        Step-In 1 "2 装 OpenSSH (dism /add-capability, 60-180s)"
+        $installOut = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE):$installOut`n手动装: Settings → Apps → Optional Features → OpenSSH Server"
+        }
     }
     Step-In 1 "3 设 sshd 自动启动 + 启动"
     Set-Service sshd -StartupType Automatic -EA SilentlyContinue
