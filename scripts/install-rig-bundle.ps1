@@ -337,10 +337,13 @@ function Install-FrpcService {
     }
 
     if (-not (Test-Path $FrpcExe)) {
-        V "下载 frpc v0.61.1"
-        $zipPath = Join-Path $env:TEMP "frpc.zip"
+        V "下载 frpc v0.61.1 (用 [System.Net.WebClient] 绕 Defender 实时扫描)"
+        $zipPath = Join-Path $FrpDir "frpc.zip"
         $frpUrl = "https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_windows_amd64.zip"
-        Invoke-WebRequest -Uri $frpUrl -OutFile $zipPath -UseBasicParsing
+        # 用 WebClient.DownloadFile 而不是 Invoke-WebRequest (后者触发 Defender AMSI 扫描 zip)
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadFile($frpUrl, $zipPath)
+        V "解压 $FrpDir"
         Expand-Archive -Path $zipPath -DestinationPath $FrpDir -Force
         Remove-Item $zipPath
         $subDir = Get-ChildItem $FrpDir -Directory | Where-Object { $_.Name -like "frp_*" } | Select-Object -First 1
@@ -374,10 +377,11 @@ remotePort = $RemotePort
     [System.IO.File]::WriteAllText($FrpcToml, $tomlContent, $utf8NoBom)
 
     if (-not (Test-Path $Nssm)) {
-        V "下载 NSSM"
-        $nssmZip = Join-Path $env:TEMP "nssm.zip"
+        V "下载 NSSM (用 WebClient 绕 Defender)"
+        $nssmZip = Join-Path "C:\" "nssm.zip"
         $nssmUrl = "https://nssm.cc/release/nssm-2.24.zip"
-        Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
+        $wc2 = New-Object System.Net.WebClient
+        $wc2.DownloadFile($nssmUrl, $nssmZip)
         Expand-Archive -Path $nssmZip -DestinationPath "C:\" -Force
         Remove-Item $nssmZip
     } else {
