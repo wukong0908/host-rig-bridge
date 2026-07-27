@@ -40,6 +40,35 @@ function If-Skip {
     return $false
 }
 
+# stage → ReadyCheck 名字映射 (deploy 时只看对应 ReadyCheck 决定跑不跑)
+$StageMap = @{
+    1 = @("sshd 服务", "sshd listen 22")
+    2 = @("mcp-rig 账号")
+    3 = @("server dir")
+    4 = @("src clone")
+    5 = @("venv")
+    6 = @("authorized_keys")
+    7 = @("frpc 服务", "frpc.toml")
+    8 = $null  # sshd_config 锁不在 ReadyCheck,总是跑(幂等覆盖)
+    9 = $null  # Verify Ready 总是跑
+}
+
+function Should-Stage {
+    param([int]$N)
+    if ($Force) { return $true }
+    $names = $StageMap[$N]
+    if (-not $names) { return $true }
+    $missing = $script:ReadyDetail | Where-Object { -not $_.Pass } | ForEach-Object { $_.Name }
+    foreach ($n in $names) { if ($missing -contains $n) { return $true } }
+    return $false
+}
+
+function Step-In {
+    param([int]$N, [string]$Sub, [string]$Status = "")
+    $tag = if ($Status) { " [$Status]" } else { "" }
+    Write-Host "  [$N.$Sub]$tag" -ForegroundColor DarkGray
+}
+
 $ReadyChecks = @(
     @{ N = "sshd 服务";       T = { (Get-Service sshd -EA SilentlyContinue) -ne $null } }
     @{ N = "sshd listen 22";  T = { (netstat -ano | findstr :22) -match "LISTENING" } }
@@ -122,15 +151,22 @@ function Show-NextSteps {
 # ===== stage 函数 =====
 
 function Install-OpenSsh {
+    Step-In 1 "1 检查 OpenSSH 是否已装"
     try {
         $openssh = Get-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" -EA Stop
-        if ($openssh.State -ne "Installed") { Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null }
+        if ($openssh.State -ne "Installed") {
+            Step-In 1 "2 装 OpenSSH (60-180s)"
+            Add-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0" | Out-Null
+        } else { Step-In 1 "2 已装,跳过" }
     } catch {
+        Step-In 1 "2 退到 DISM (60-180s)"
         $out = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
         if ($LASTEXITCODE -ne 0) { throw "DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE). 手动装: Settings → Apps → Optional Features → OpenSSH Server" }
     }
+    Step-In 1 "3 设 sshd 自动启动 + 启动"
     Set-Service sshd -StartupType Automatic -EA SilentlyContinue
     Start-Service sshd -EA SilentlyContinue
+    Step-In 1 "4 放行防火墙 OpenSSH-Server-In-TCP"
     if (Get-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -EA SilentlyContinue) {
         Enable-NetFirewallRule -Name "OpenSSH-Server-In-TCP" | Out-Null
     }
@@ -138,49 +174,77 @@ function Install-OpenSsh {
 
 function New-McpRigUser {
     if (If-Skip { Get-LocalUser -Name $UserName -EA SilentlyContinue } "mcp-rig 账号") { return }
+    Step-In 2 "1 生成随机密码 (GUID)"
     $pwd = ConvertTo-SecureString ([Guid]::NewGuid().ToString()) -AsPlainText -Force
+    Step-In 2 "2 New-LocalUser (密码永不过期,只能 pubkey)"
     New-LocalUser -Name $UserName -Password $pwd -PasswordNeverExpires -UserMayNotChangePassword `
         -Description "host-rig-bridge MCP server (pubkey only)" | Out-Null
 }
 
 function New-ServerDirs {
-    if (-not (Test-Path $ServerDir)) { New-Item -ItemType Directory -Path $ServerDir -Force | Out-Null }
-    if (-not (Test-Path $SshDir))    { New-Item -ItemType Directory -Path $SshDir    -Force | Out-Null }
+    if (-not (Test-Path $ServerDir)) {
+        Step-In 3 "1 mkdir $ServerDir"
+        New-Item -ItemType Directory -Path $ServerDir -Force | Out-Null
+    } else { Step-In 3 "1 $ServerDir 已存在" }
+    if (-not (Test-Path $SshDir)) {
+        Step-In 3 "2 mkdir $SshDir (Windows 默认 ACL)"
+        New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
+    } else { Step-In 3 "2 $SshDir 已存在" }
 }
 
 function Git-CloneRig {
     if (If-Skip { Test-Path "$ServerDir\src\.git" } "src clone") { return }
     $token = $env:RIG_GIT_TOKEN
     $url = if ($token) { "https://${token}@github.com/wukong0908/host-rig-bridge.git" } else { "https://github.com/wukong0908/host-rig-bridge.git" }
+    if ($token) { Step-In 4 "1 用 RIG_GIT_TOKEN 克隆 (5-30s)" } else { Step-In 4 "1 无 TOKEN,假设已认证,克隆 (5-30s)" }
     git clone --depth 1 --branch main --progress $url "$ServerDir\src"
-    if ($token) { git -C "$ServerDir\src" remote set-url origin "https://github.com/wukong0908/host-rig-bridge.git" }
+    if ($token) {
+        Step-In 4 "2 清掉 remote URL 里的 token"
+        git -C "$ServerDir\src" remote set-url origin "https://github.com/wukong0908/host-rig-bridge.git"
+    }
 }
 
 function Install-McpVenv {
     if (-not (Test-Path "$ServerDir\.venv")) {
+        Step-In 5 "1 py -3 -m venv"
         & py.exe -3 -m venv "$ServerDir\.venv"
-    }
+    } else { Step-In 5 "1 venv 已存在" }
     $py = "$ServerDir\.venv\Scripts\python.exe"
+    Step-In 5 "2 pip install --upgrade pip (30-60s)"
     & $py -m pip install --upgrade pip 2>&1 | Select-Object -Last 1 | ForEach-Object { V $_ }
+    Step-In 5 "3 pip install mcp>=1.10,<2.0 (30-90s)"
     & $py -m pip install "mcp>=1.10,<2.0" 2>&1 | Select-Object -Last 1 | ForEach-Object { V $_ }
 }
 
 function Write-AuthorizedKey {
-    if (-not (Test-Path $SshDir)) { New-Item -ItemType Directory -Path $SshDir -Force | Out-Null }
-    if (Test-Path $AkPath) { Remove-Item $AkPath -Force -EA SilentlyContinue }
+    if (-not (Test-Path $SshDir)) {
+        Step-In 6 "1 mkdir $SshDir"
+        New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
+    }
+    if (Test-Path $AkPath) {
+        Step-In 6 "2 删旧 authorized_keys"
+        Remove-Item $AkPath -Force -EA SilentlyContinue
+    }
+    Step-In 6 "3 写新 authorized_keys (UTF8 无 BOM)"
     Write-Utf8 $AkPath ($HostPubkey + "`r`n")
 }
 
 function Install-FrpcService {
-    if (-not (Test-Path $FrpDir)) { New-Item -ItemType Directory -Path $FrpDir -Force | Out-Null }
+    if (-not (Test-Path $FrpDir)) {
+        Step-In 7 "1 mkdir $FrpDir"
+        New-Item -ItemType Directory -Path $FrpDir -Force | Out-Null
+    }
     if (-not (Test-Path $FrpcExe)) {
+        Step-In 7 "2 下载 frpc v0.61.1 (WebClient 绕 Defender)"
         $zip = Join-Path $FrpDir "frpc.zip"
         (New-Object System.Net.WebClient).DownloadFile("https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_windows_amd64.zip", $zip)
+        Step-In 7 "3 解压 + 整理子目录"
         Expand-Archive $zip $FrpDir -Force
         Remove-Item $zip
         $sub = Get-ChildItem $FrpDir -Directory | Where-Object { $_.Name -like "frp_*" } | Select-Object -First 1
         if ($sub) { Get-ChildItem $sub.FullName | Move-Item -Destination $FrpDir -Force; Remove-Item $sub.FullName -Recurse }
-    }
+    } else { Step-In 7 "2-3 frpc.exe 已存在" }
+    Step-In 7 "4 写 $FrpcToml (心跳放 transport.*)"
     Write-Utf8 $FrpcToml @"
 serverAddr = "$Vps"
 serverPort = 7000
@@ -196,26 +260,35 @@ localPort = 22
 remotePort = $RemotePort
 "@
     if (-not (Test-Path $Nssm)) {
+        Step-In 7 "5 下载 NSSM (WebClient 绕 Defender)"
         $nssmZip = "C:\nssm.zip"
         (New-Object System.Net.WebClient).DownloadFile("https://nssm.cc/release/nssm-2.24.zip", $nssmZip)
         Expand-Archive $nssmZip "C:\" -Force
         Remove-Item $nssmZip
+    } else { Step-In 7 "5 NSSM 已存在" }
+    if (Get-Service frpc -EA SilentlyContinue) {
+        Step-In 7 "6 停 + 删旧 frpc 服务 (重注册)"
+        & $Nssm stop frpc 2>&1 | Out-Null; & $Nssm remove frpc confirm 2>&1 | Out-Null
     }
-    if (Get-Service frpc -EA SilentlyContinue) { & $Nssm stop frpc 2>&1 | Out-Null; & $Nssm remove frpc confirm 2>&1 | Out-Null }
+    Step-In 7 "7 NSSM install frpc + 7 个 set + start"
     & $Nssm install frpc $FrpcExe "-c $FrpcToml" | Out-Null
     & $Nssm set frpc AppDirectory $FrpDir | Out-Null
     & $Nssm set frpc Start SERVICE_AUTO_START | Out-Null
     & $Nssm set frpc AppStdout "$FrpDir\frpc.out.log" | Out-Null
     & $Nssm set frpc AppStderr "$FrpDir\frpc.err.log" | Out-Null
     & $Nssm set frpc AppRotateFiles 1 | Out-Null
-    & $Nssm set frpc AppRotateBytes 1048576 | Out-Null
+    & $Nssm set frpc AppRotateBytes 10485760 | Out-Null
     & $Nssm set frpc AppRestartDelay 5000 | Out-Null
     & $Nssm start frpc | Out-Null
 }
 
 function Lock-SshdConfig {
     $sshdConf = "$env:ProgramData\ssh\sshd_config"
-    if (-not (Test-Path "$sshdConf.bak")) { Copy-Item $sshdConf "$sshdConf.bak" -Force }
+    if (-not (Test-Path "$sshdConf.bak")) {
+        Step-In 8 "1 备份 sshd_config → sshd_config.bak"
+        Copy-Item $sshdConf "$sshdConf.bak" -Force
+    } else { Step-In 8 "1 已有备份" }
+    Step-In 8 "2 regex 替换 3 项 (Pubkey/Password/PermitRoot)"
     $content = Get-Content $sshdConf -Raw
     $content = $content -replace '^\s*#?\s*PubkeyAuthentication\s+.*',   'PubkeyAuthentication yes'
     $content = $content -replace '^\s*#?\s*PasswordAuthentication\s+.*', 'PasswordAuthentication no'
@@ -224,6 +297,7 @@ function Lock-SshdConfig {
     if ($content -notmatch '^PasswordAuthentication\s+no$')  { $content += "`r`nPasswordAuthentication no" }
     if ($content -notmatch '^PermitRootLogin\s+no$')         { $content += "`r`nPermitRootLogin no" }
     Write-Utf8 $sshdConf $content
+    Step-In 8 "3 Restart-Service sshd"
     Restart-Service sshd
 }
 
@@ -234,7 +308,7 @@ $FrpToken   = $env:RIG_FRP_TOKEN
 $RemotePort = $env:RIG_REMOTE_PORT
 $HostPubkey = $env:RIG_HOST_PUBKEY
 
-if ($Status) { Invoke-Verify -Status $true; exit 0 }
+if ($Status) { Invoke-Verify; exit 0 }
 if ($Verify) { Invoke-Verify; exit 0 }
 
 if (-not $Vps -or -not $FrpToken -or -not $RemotePort -or -not $HostPubkey) {
@@ -261,22 +335,38 @@ if ($ready -and -not $Force) {
 }
 
 Write-Host ""
-Write-Host "🚀 开始 deploy (9 stage):" -ForegroundColor Cyan
+if ($Force) {
+    Write-Host "🚀 开始 deploy (9 stage, 强制模式 -Force, 全跑):" -ForegroundColor Cyan
+} else {
+    $missing = $script:ReadyDetail | Where-Object { -not $_.Pass }
+    Write-Host "🚀 开始 deploy (缺 $($missing.Count) 项):" -ForegroundColor Cyan
+    foreach ($m in $missing) { Write-Host "    ✗ $($m.Name)" -ForegroundColor Yellow }
+}
 
-function Do([int]$n, [string]$name, [scriptblock]$action) {
+function Run([int]$n, [string]$name, [scriptblock]$action) {
     Write-Host "[$n/9] $name ... " -NoNewline -ForegroundColor Cyan
     try { & $action; Write-Host "[完成]" -ForegroundColor Green }
     catch { Write-Host "[失败]" -ForegroundColor Red; throw }
 }
 
-Do 1 "OpenSSH Server"     { Install-OpenSsh }
-Do 2 "mcp-rig 账号"        { New-McpRigUser }
-Do 3 "server 目录 + .ssh"  { New-ServerDirs }
-Do 4 "git clone 代码"      { Git-CloneRig }
-Do 5 "venv + mcp SDK"      { Install-McpVenv }
-Do 6 "authorized_keys"     { Write-AuthorizedKey }
-Do 7 "frpc + NSSM"         { Install-FrpcService }
-Do 8 "sshd_config 锁"      { Lock-SshdConfig }
+function Skip([int]$n, [string]$name) {
+    Write-Host "[$n/9] $name ... [跳过: 已就绪]" -ForegroundColor DarkGray
+}
+
+$Stages = @(
+    @{ N = 1; Name = "OpenSSH Server";     A = { Install-OpenSsh } }
+    @{ N = 2; Name = "mcp-rig 账号";        A = { New-McpRigUser } }
+    @{ N = 3; Name = "server 目录 + .ssh";  A = { New-ServerDirs } }
+    @{ N = 4; Name = "git clone 代码";      A = { Git-CloneRig } }
+    @{ N = 5; Name = "venv + mcp SDK";      A = { Install-McpVenv } }
+    @{ N = 6; Name = "authorized_keys";     A = { Write-AuthorizedKey } }
+    @{ N = 7; Name = "frpc + NSSM";         A = { Install-FrpcService } }
+    @{ N = 8; Name = "sshd_config 锁";      A = { Lock-SshdConfig } }
+)
+
+foreach ($s in $Stages) {
+    if (Should-Stage $s.N) { Run $s.N $s.Name $s.A } else { Skip $s.N $s.Name }
+}
 
 Write-Host "[9/9] Verify Ready ... " -NoNewline -ForegroundColor Cyan
 if (Test-Ready) { Write-Host "[完成]" -ForegroundColor Green } else { Write-Host "[失败: 见 -Status]" -ForegroundColor Yellow }
