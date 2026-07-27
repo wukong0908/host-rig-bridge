@@ -301,11 +301,10 @@ function Install-McpVenv {
 function Write-AuthorizedKey {
     $acct = "$env:COMPUTERNAME\$UserName"
 
-    if (Test-Path $AkPath) {
-        V "takeown + 放开 RW (写完恢复 icacls 锁)"
-        takeown /F $AkPath /A | Out-Null
-        icacls $AkPath /grant "${env:USERNAME}:(RW)" | Out-Null
-    }
+    # 文件已 icacls 锁成 mcp-rig:SYSTEM only,管理员也无权写 → 无条件 takeown + 放 RW
+    V "takeown + 放开 RW (写完恢复 icacls 锁)"
+    takeown /F $AkPath /A 2>&1 | Out-Null
+    icacls $AkPath /grant "${env:USERNAME}:(RW)" 2>&1 | Out-Null
 
     V "Add-Content authorized_keys"
     Add-Content -Path $AkPath -Value $HostPubkey -Encoding UTF8
