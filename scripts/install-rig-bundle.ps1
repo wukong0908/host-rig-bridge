@@ -34,9 +34,13 @@ $FrpcToml   = "$FrpDir\frpc.toml"
 $Nssm       = "C:\nssm-2.24\win64\nssm.exe"
 
 # =====================================================================
-# 前置函数 (主流程立即调用: Test-Ready / Show-Status / Invoke-Verify)
-# 必须定义在调用前。PowerShell 函数定义不像 Python 是声明,文件流式解析。
+# 函数区 (全部前置 — PowerShell 文件流式解析,函数必须在调用前定义)
 # =====================================================================
+
+function V {
+    param([string]$Msg)
+    if ($Verbose) { Write-Host "    → $Msg" -ForegroundColor DarkGray }
+}
 
 function Test-Ready {
     $checks = @(
@@ -153,72 +157,6 @@ function Invoke-Verify {
     Write-Host "Verify 结果: $pass / 5 通过" -ForegroundColor $(if ($pass -eq 5) { "Green" } else { "Yellow" })
 }
 
-# ===== 段 0: 解析入参 =====
-$Vps         = $env:RIG_VPS
-$FrpToken    = $env:RIG_FRP_TOKEN
-$RemotePort  = $env:RIG_REMOTE_PORT
-$HostPubkey  = $env:RIG_HOST_PUBKEY
-
-if ($Status) { Show-Status; exit 0 }
-if ($Verify) { Invoke-Verify; exit 0 }
-
-if (-not $Vps -or -not $FrpToken -or -not $RemotePort -or -not $HostPubkey) {
-    Write-Host "❌ deploy 模式需 4 个环境变量:" -ForegroundColor Red
-    Write-Host '   $env:RIG_VPS         = "8.163.106.31"' -ForegroundColor Red
-    Write-Host '   $env:RIG_FRP_TOKEN   = "<同家里 frpc 的 token>"' -ForegroundColor Red
-    Write-Host '   $env:RIG_REMOTE_PORT = "6001"' -ForegroundColor Red
-    Write-Host '   $env:RIG_HOST_PUBKEY = "<forced command + 主机公钥 整行>"' -ForegroundColor Red
-    Write-Host ""
-    Write-Host "子命令不需这些:" -ForegroundColor Yellow
-    Write-Host "   install-rig-bundle.ps1 -Verify" -ForegroundColor Yellow
-    Write-Host "   install-rig-bundle.ps1 -Status" -ForegroundColor Yellow
-    exit 1
-}
-
-# ===== 管理员检查 =====
-$id = [Security.Principal.WindowsIdentity]::GetCurrent()
-$pr = New-Object Security.Principal.WindowsPrincipal $id
-if (-not $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw "需要管理员 PowerShell. 右键 → 以管理员身份运行."
-}
-
-# ===== 段 1: Ready 检查 + 早返 =====
-$ready = Test-Ready
-if ($ready -and -not $Force) {
-    Show-Ready
-    Show-NextSteps
-    exit 0
-}
-
-# ===== 段 2: Deploy (9 stage) =====
-Write-Host ""
-Write-Host "🚀 开始 deploy (9 stage):" -ForegroundColor Cyan
-if ($ready) { Write-Host "    (强制模式 -Force,跳过跳过判定)" }
-
-Run-Stage 1 { Install-OpenSsh }      "OpenSSH Server"
-Run-Stage 2 { New-McpRigUser }       "mcp-rig 账号"
-Run-Stage 3 { New-ServerDirs }       "server 目录 + .ssh"
-Run-Stage 4 { Git-CloneRig }         "git clone 代码"
-Run-Stage 5 { Install-McpVenv }      "venv + mcp SDK"
-Run-Stage 6 { Write-AuthorizedKey }  "authorized_keys"
-Run-Stage 7 { Install-FrpcService }  "frpc + NSSM"
-Run-Stage 8 { Lock-SshdConfig }      "sshd_config 锁"
-
-# Stage 9: 验证就绪
-Write-Host "[9/9] Verify Ready ... " -NoNewline -ForegroundColor Cyan
-if (Test-Ready) {
-    Write-Host "[完成]" -ForegroundColor Green
-} else {
-    Write-Host "[失败: 仍有缺项,见 -Status]" -ForegroundColor Yellow
-}
-
-Show-NextSteps
-exit 0
-
-# =====================================================================
-# Deploy 阶段函数 (主流程 Run-Stage 调用,定义放这里可读性更好)
-# =====================================================================
-
 function Run-Stage {
     param([int]$N, [scriptblock]$Action, [string]$Name)
     Write-Host "[$N/9] $Name ... " -NoNewline -ForegroundColor Cyan
@@ -231,12 +169,27 @@ function Run-Stage {
     }
 }
 
-function V {
-    param([string]$Msg)
-    if ($Verbose) { Write-Host "    → $Msg" -ForegroundColor DarkGray }
+function Show-NextSteps {
+    Write-Host ""
+    Write-Host "✅ 全部 9 stage 完成。后续手动步骤:" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  [VPS 阿里云控制台 — 30s]" -ForegroundColor Cyan
+    Write-Host "    1. 放行 $RemotePort TCP 入站:" -ForegroundColor Cyan
+    Write-Host "       端口范围: $RemotePort/$RemotePort" -ForegroundColor Cyan
+    Write-Host "       协议: TCP" -ForegroundColor Cyan
+    Write-Host "       源: 0.0.0.0/0" -ForegroundColor Cyan
+    Write-Host "       描述: frp-rig-ssh" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  [主机 — 1 min]" -ForegroundColor Cyan
+    Write-Host "    2. cd D:\WuKong\Desktop\host-rig-bridge && git pull origin main" -ForegroundColor Cyan
+    Write-Host "       pwsh scripts/register-rig.ps1 -RigAlias rig -RigHost $Vps -RigPort $RemotePort -RigUser $UserName" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  [外机 — 30s]" -ForegroundColor Cyan
+    Write-Host "    3. install-rig-bundle.ps1 -Verify" -ForegroundColor Cyan
+    Write-Host "       (5 步: sshd 听 / frpc 在 / VPS:$RemotePort 通 / mcp SDK OK / ssh rig 通)" -ForegroundColor Cyan
 }
 
-# ===== Stage 1: OpenSSH =====
+# ===== Stage 函数 =====
 function Install-OpenSsh {
     $installed = $false
     try {
@@ -268,7 +221,6 @@ function Install-OpenSsh {
     }
 }
 
-# ===== Stage 2: 账号 =====
 function New-McpRigUser {
     if (Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue) {
         V "账号已存在"
@@ -280,7 +232,6 @@ function New-McpRigUser {
         -Description "host-rig-bridge MCP server (pubkey only)" | Out-Null
 }
 
-# ===== Stage 3: 目录 =====
 function New-ServerDirs {
     if (-not (Test-Path $ServerDir)) {
         V "mkdir $ServerDir"
@@ -297,7 +248,6 @@ function New-ServerDirs {
     }
 }
 
-# ===== Stage 4: git clone =====
 function Git-CloneRig {
     if (Test-Path "$ServerDir\src\.git") {
         V "$ServerDir\src 已 clone"
@@ -318,7 +268,6 @@ function Git-CloneRig {
     }
 }
 
-# ===== Stage 5: venv + mcp =====
 function Install-McpVenv {
     if (-not (Test-Path "$ServerDir\.venv")) {
         $py = $null
@@ -349,7 +298,6 @@ function Install-McpVenv {
     V $ok
 }
 
-# ===== Stage 6: authorized_keys =====
 function Write-AuthorizedKey {
     $acct = "$env:COMPUTERNAME\$UserName"
 
@@ -367,7 +315,6 @@ function Write-AuthorizedKey {
     icacls $AkPath /remove "(${env:COMPUTERNAME}\${env:USERNAME})" 2>&1 | Out-Null
 }
 
-# ===== Stage 7: frpc + NSSM =====
 function Install-FrpcService {
     if (-not (Test-Path $FrpDir)) {
         New-Item -ItemType Directory -Path $FrpDir -Force | Out-Null
@@ -437,7 +384,6 @@ remotePort = $RemotePort
     & $Nssm start frpc | Out-Null
 }
 
-# ===== Stage 8: 锁 sshd_config =====
 function Lock-SshdConfig {
     $sshdConf = "$env:ProgramData\ssh\sshd_config"
     $backup = "$sshdConf.bak.$(Get-Date -Format yyyyMMdd)"
@@ -467,23 +413,68 @@ function Lock-SshdConfig {
     Restart-Service sshd
 }
 
-# ===== NextSteps =====
-function Show-NextSteps {
+# =====================================================================
+# 主流程 (所有函数已定义)
+# =====================================================================
+
+# ===== 段 0: 解析入参 =====
+$Vps         = $env:RIG_VPS
+$FrpToken    = $env:RIG_FRP_TOKEN
+$RemotePort  = $env:RIG_REMOTE_PORT
+$HostPubkey  = $env:RIG_HOST_PUBKEY
+
+if ($Status) { Show-Status; exit 0 }
+if ($Verify) { Invoke-Verify; exit 0 }
+
+if (-not $Vps -or -not $FrpToken -or -not $RemotePort -or -not $HostPubkey) {
+    Write-Host "❌ deploy 模式需 4 个环境变量:" -ForegroundColor Red
+    Write-Host '   $env:RIG_VPS         = "8.163.106.31"' -ForegroundColor Red
+    Write-Host '   $env:RIG_FRP_TOKEN   = "<同家里 frpc 的 token>"' -ForegroundColor Red
+    Write-Host '   $env:RIG_REMOTE_PORT = "6001"' -ForegroundColor Red
+    Write-Host '   $env:RIG_HOST_PUBKEY = "<forced command + 主机公钥 整行>"' -ForegroundColor Red
     Write-Host ""
-    Write-Host "✅ 全部 9 stage 完成。后续手动步骤:" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "  [VPS 阿里云控制台 — 30s]" -ForegroundColor Cyan
-    Write-Host "    1. 放行 $RemotePort TCP 入站:" -ForegroundColor Cyan
-    Write-Host "       端口范围: $RemotePort/$RemotePort" -ForegroundColor Cyan
-    Write-Host "       协议: TCP" -ForegroundColor Cyan
-    Write-Host "       源: 0.0.0.0/0" -ForegroundColor Cyan
-    Write-Host "       描述: frp-rig-ssh" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  [主机 — 1 min]" -ForegroundColor Cyan
-    Write-Host "    2. cd D:\WuKong\Desktop\host-rig-bridge && git pull origin main" -ForegroundColor Cyan
-    Write-Host "       pwsh scripts/register-rig.ps1 -RigAlias rig -RigHost $Vps -RigPort $RemotePort -RigUser $UserName" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  [外机 — 30s]" -ForegroundColor Cyan
-    Write-Host "    3. install-rig-bundle.ps1 -Verify" -ForegroundColor Cyan
-    Write-Host "       (5 步: sshd 听 / frpc 在 / VPS:$RemotePort 通 / mcp SDK OK / ssh rig 通)" -ForegroundColor Cyan
+    Write-Host "子命令不需这些:" -ForegroundColor Yellow
+    Write-Host "   install-rig-bundle.ps1 -Verify" -ForegroundColor Yellow
+    Write-Host "   install-rig-bundle.ps1 -Status" -ForegroundColor Yellow
+    exit 1
 }
+
+# ===== 管理员检查 =====
+$id = [Security.Principal.WindowsIdentity]::GetCurrent()
+$pr = New-Object Security.Principal.WindowsPrincipal $id
+if (-not $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "需要管理员 PowerShell. 右键 → 以管理员身份运行."
+}
+
+# ===== 段 1: Ready 检查 + 早返 =====
+$ready = Test-Ready
+if ($ready -and -not $Force) {
+    Show-Ready
+    Show-NextSteps
+    exit 0
+}
+
+# ===== 段 2: Deploy (9 stage) =====
+Write-Host ""
+Write-Host "🚀 开始 deploy (9 stage):" -ForegroundColor Cyan
+if ($ready) { Write-Host "    (强制模式 -Force,跳过跳过判定)" }
+
+Run-Stage 1 { Install-OpenSsh }      "OpenSSH Server"
+Run-Stage 2 { New-McpRigUser }       "mcp-rig 账号"
+Run-Stage 3 { New-ServerDirs }       "server 目录 + .ssh"
+Run-Stage 4 { Git-CloneRig }         "git clone 代码"
+Run-Stage 5 { Install-McpVenv }      "venv + mcp SDK"
+Run-Stage 6 { Write-AuthorizedKey }  "authorized_keys"
+Run-Stage 7 { Install-FrpcService }  "frpc + NSSM"
+Run-Stage 8 { Lock-SshdConfig }      "sshd_config 锁"
+
+# Stage 9: 验证就绪
+Write-Host "[9/9] Verify Ready ... " -NoNewline -ForegroundColor Cyan
+if (Test-Ready) {
+    Write-Host "[完成]" -ForegroundColor Green
+} else {
+    Write-Host "[失败: 仍有缺项,见 -Status]" -ForegroundColor Yellow
+}
+
+Show-NextSteps
+exit 0
