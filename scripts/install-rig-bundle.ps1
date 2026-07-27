@@ -19,7 +19,7 @@
 [CmdletBinding()]
 param([switch]$Verify, [switch]$Status, [switch]$Force)
 
-$ScriptVersion = "0.9.6"
+$ScriptVersion = "0.9.7"
 # commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
 # iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
@@ -233,7 +233,17 @@ function Write-AuthorizedKey {
         Remove-Item $AkPath -Force -EA SilentlyContinue
     }
     Step-In 6 "3 写新 authorized_keys (UTF8 无 BOM)"
-    Write-Utf8 $AkPath ($HostPubkey + "`r`n")
+    try {
+        Write-Utf8 $AkPath ($HostPubkey + "`r`n")
+    } catch [System.UnauthorizedAccessException] {
+        # 前几版 icacls /grant:r 把 .ssh 目录的 Administrators:F 剥离 → 管理员写文件 Access Denied
+        # 自动恢复: 砍 .ssh 整目录 + 重 mkdir (Windows 默认 ACL 自动应用)
+        Step-In 6 "3.1 写失败 (旧 ACL 中毒,前几版 icacls 锁残留),砍 .ssh 重 mkdir"
+        Remove-Item $SshDir -Recurse -Force -EA SilentlyContinue
+        New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
+        Step-In 6 "3.2 重写 authorized_keys"
+        Write-Utf8 $AkPath ($HostPubkey + "`r`n")
+    }
 }
 
 function Install-FrpcService {
