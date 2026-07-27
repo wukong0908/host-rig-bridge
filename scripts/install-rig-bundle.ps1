@@ -1,6 +1,8 @@
 # install-rig-bundle.ps1 — 外机一键 deploy (链路 B)
 # 装 OpenSSH + 建账号 + 拉代码 + 建 venv + 装 mcp + 写 authorized_keys + 装 frpc + 锁 sshd
 #
+# 版本: 改此文件前先跑 scripts/bump-version.ps1 (自动 +0.0.1 + commit [bump] 信息)
+#
 # 用法 (外机管理员 PowerShell 7.1+):
 #   $env:RIG_VPS         = "8.163.106.31"
 #   $env:RIG_FRP_TOKEN   = "<同家里 frpc 的 token>"
@@ -10,12 +12,16 @@
 #
 # 子命令:
 #   install-rig-bundle.ps1 -Verify    # 5 步验证
-#   install-rig-bundle.ps1 -Status    # 显示当前状态
+#   install-rig-bundle.ps1 -Status    # 显示当前状态 (含版本 + commit)
 #   install-rig-bundle.ps1 -Force     # 跳过 Ready 检查强制重跑
 #   install-rig-bundle.ps1 -Verbose   # 展开 stage 内子步骤
 
 [CmdletBinding()]
 param([switch]$Verify, [switch]$Status, [switch]$Force)
+
+$ScriptVersion = "0.9.6"
+# commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
+# iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
 $ErrorActionPreference = "Stop"
 
@@ -91,6 +97,7 @@ function Test-Ready {
 
 function Show-ReadyTable {
     Write-Host ""
+    Write-Host "[版本 v$ScriptVersion]" -ForegroundColor DarkGray
     $title = if ($Status) { "=== 当前状态 ===" } else { "✓ 外机已就绪 ($($script:ReadyDetail.Count)/$($script:ReadyDetail.Count)):" }
     Write-Host $title -ForegroundColor Cyan
     foreach ($r in $script:ReadyDetail) {
@@ -335,6 +342,7 @@ if ($ready -and -not $Force) {
 }
 
 Write-Host ""
+Write-Host "[版本 v$ScriptVersion]" -ForegroundColor DarkGray
 if ($Force) {
     Write-Host "🚀 开始 deploy (9 stage, 强制模式 -Force, 全跑):" -ForegroundColor Cyan
 } else {
