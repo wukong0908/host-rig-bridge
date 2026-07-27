@@ -25,7 +25,7 @@ param(
     [switch]$Auto   # 跳过 deploy 前确认 (无人值守/主机调用)
 )
 
-$ScriptVersion = "0.9.12"
+$ScriptVersion = "0.9.11"
 # commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
 # iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
@@ -45,28 +45,6 @@ $Nssm      = "C:\nssm-2.24\win64\nssm.exe"
 function V { param($m) if ($Verbose) { Write-Host "    → $m" -ForegroundColor DarkGray } }
 
 function Write-Utf8 { param($Path, $Text) [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false))) }
-
-function Download-File {
-    # 3 层 fallback:
-    #   1) WebClient.DownloadFile — 绕 Defender AMSI(走 raw socket)
-    #   2) WebClient retry 2 次 (网络瞬断)
-    #   3) iwr -UseBasicParsing + 跳 Defender 排除路径
-    param([string]$Url, [string]$Dest)
-    $err = $null
-    for ($i = 1; $i -le 3; $i++) {
-        try {
-            $wc = New-Object System.Net.WebClient
-            $wc.Headers.Add("User-Agent", "PowerShell")
-            $wc.DownloadFile($Url, $Dest)
-            return
-        } catch {
-            $err = $_
-            V "WebClient attempt $i/3 failed: $($_.Exception.Message)"
-            Start-Sleep -Seconds 2
-        }
-    }
-    throw "下载失败 ($Url) 3 次: $err"
-}
 
 function If-Skip {
     param([scriptblock]$Test, [string]$Name)
@@ -288,9 +266,9 @@ function Install-FrpcService {
         New-Item -ItemType Directory -Path $FrpDir -Force | Out-Null
     }
     if (-not (Test-Path $FrpcExe)) {
-        Step-In 7 "2 下载 frpc v0.61.1 (WebClient + User-Agent + retry 3)"
+        Step-In 7 "2 下载 frpc v0.61.1 (WebClient 绕 Defender)"
         $zip = Join-Path $FrpDir "frpc.zip"
-        Download-File "https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_windows_amd64.zip" $zip
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_windows_amd64.zip", $zip)
         Step-In 7 "3 解压 + 整理子目录"
         Expand-Archive $zip $FrpDir -Force
         Remove-Item $zip
@@ -313,9 +291,9 @@ localPort = 22
 remotePort = $RemotePort
 "@
     if (-not (Test-Path $Nssm)) {
-        Step-In 7 "5 下载 NSSM (WebClient + retry 3)"
+        Step-In 7 "5 下载 NSSM (WebClient 绕 Defender)"
         $nssmZip = "C:\nssm.zip"
-        Download-File "https://nssm.cc/release/nssm-2.24.zip" $nssmZip
+        (New-Object System.Net.WebClient).DownloadFile("https://nssm.cc/release/nssm-2.24.zip", $nssmZip)
         Expand-Archive $nssmZip "C:\" -Force
         Remove-Item $nssmZip
     } else { Step-In 7 "5 NSSM 已存在" }
