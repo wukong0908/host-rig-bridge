@@ -25,7 +25,7 @@ param(
     [switch]$Auto   # 跳过 deploy 前确认 (无人值守/主机调用)
 )
 
-$ScriptVersion = "0.9.10"
+$ScriptVersion = "0.9.11"
 # commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
 # iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
@@ -164,17 +164,24 @@ function Show-NextSteps {
 # ===== stage 函数 =====
 
 function Install-OpenSsh {
-    Step-In 1 "1 检查 OpenSSH 是否已装 (dism, ~200ms)"
-    # dism 比 Get-WindowsCapability 快 600x (实测 210ms vs 134s)
-    $dismOut = dism /online /get-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "dism /get-capability 失败 (exit=$LASTEXITCODE):$dismOut" }
-    if ($dismOut -match "Installed") {
-        Step-In 1 "2 已装,跳过"
+    # 三层快路径:
+    #   1) Get-Service sshd <100ms — 已装
+    #   2) CBS 注册表包 <200ms — 装过但服务没起
+    #   3) dism /add-capability — 真没装(慢但 Win11 兼容)
+    $sshdSvc = Get-Service sshd -EA SilentlyContinue
+    if ($sshdSvc) {
+        Step-In 1 "1 sshd 服务已注册 (Get-Service, ~20ms) — 跳过装"
     } else {
-        Step-In 1 "2 装 OpenSSH (dism /add-capability, 60-180s)"
-        $installOut = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE):$installOut`n手动装: Settings → Apps → Optional Features → OpenSSH Server"
+        $cbs = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackageIndex\OpenSSH-Server~~~~0.0.1.0" -EA SilentlyContinue
+        if ($cbs) {
+            Step-In 1 "1 CBS 包已注册 (~200ms) — 装过,跳"
+        } else {
+            Step-In 1 "1 真没装, dism /add-capability (60-180s)"
+            $installOut = dism /online /add-capability /capabilityname:OpenSSH.Server~~~~0.0.1.0 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "DISM 装 OpenSSH 失败 (exit=$LASTEXITCODE):$installOut`n手动装: Settings → Apps → Optional Features → OpenSSH Server"
+            }
+            Step-In 1 "2 OpenSSH 装完"
         }
     }
     Step-In 1 "3 设 sshd 自动启动 + 启动"
