@@ -15,11 +15,17 @@
 #   install-rig-bundle.ps1 -Status    # 显示当前状态 (含版本 + commit)
 #   install-rig-bundle.ps1 -Force     # 跳过 Ready 检查强制重跑
 #   install-rig-bundle.ps1 -Verbose   # 展开 stage 内子步骤
+#   install-rig-bundle.ps1 -Auto      # 跳过 deploy 前确认 (无人值守)
 
 [CmdletBinding()]
-param([switch]$Verify, [switch]$Status, [switch]$Force)
+param(
+    [switch]$Verify,
+    [switch]$Status,
+    [switch]$Force,
+    [switch]$Auto   # 跳过 deploy 前确认 (无人值守/主机调用)
+)
 
-$ScriptVersion = "0.9.8"
+$ScriptVersion = "0.9.9"
 # commit 由 git 自动注入:本地跑 = 本地 HEAD;iex 拉 = GitHub raw CDN 抓到的 commit (需 GitHub 提供)
 # iwr Content 模式拿不到 commit,所以版本自报只显示 \$ScriptVersion,commit 由主人查 git log 补
 
@@ -360,6 +366,20 @@ if ($Force) {
     $missing = $script:ReadyDetail | Where-Object { -not $_.Pass }
     Write-Host "🚀 开始 deploy (缺 $($missing.Count) 项):" -ForegroundColor Cyan
     foreach ($m in $missing) { Write-Host "    ✗ $($m.Name)" -ForegroundColor Yellow }
+}
+
+# 交互确认 (deploy 模式 + 非 -Auto)
+if (-not $Auto) {
+    Write-Host ""
+    Write-Host "准备 deploy (链路 B frp):" -ForegroundColor Yellow
+    Write-Host "  VPS:         $Vps"
+    Write-Host "  RemotePort:  $RemotePort"
+    Write-Host "  mcp-rig 账号: $UserName"
+    $answer = Read-Host "确认 deploy? [Y/n]"
+    if ($answer -match '^[Nn]') {
+        Write-Host "已取消。" -ForegroundColor Yellow
+        exit 0
+    }
 }
 
 function Run([int]$n, [string]$name, [scriptblock]$action) {
