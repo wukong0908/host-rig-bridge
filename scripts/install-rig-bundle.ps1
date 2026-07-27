@@ -301,17 +301,23 @@ function Install-McpVenv {
 function Write-AuthorizedKey {
     $acct = "$env:COMPUTERNAME\$UserName"
 
-    # 文件已 icacls 锁成 mcp-rig:SYSTEM only,管理员也无权写 → 无条件 takeown + 放 RW
-    V "takeown + 放开 RW (写完恢复 icacls 锁)"
-    takeown /F $AkPath /A 2>&1 | Out-Null
-    icacls $AkPath /grant "${env:USERNAME}:(RW)" 2>&1 | Out-Null
+    # 深度防御: 已锁的旧文件管理员无权覆盖。直接删除重建,不依赖 takeown / icacls grant 兼容性。
+    # SSH 没 authorized_keys 时仍允许 pubkey auth(只会拒绝登录,不会锁账号)。
+    if (Test-Path $AkPath) {
+        V "删除旧 authorized_keys (icacls 锁后 takeown 也救不回,直接重建)"
+        Remove-Item -Path $AkPath -Force 2>&1 | Out-Null
+    }
+    if (-not (Test-Path $SshDir)) {
+        V "mkdir $SshDir"
+        New-Item -ItemType Directory -Path $SshDir -Force | Out-Null
+    }
 
-    V "Add-Content authorized_keys"
-    Add-Content -Path $AkPath -Value $HostPubkey -Encoding UTF8
+    V "Set-Content authorized_keys (UTF8 无 BOM)"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($AkPath, $HostPubkey + "`r`n", $utf8NoBom)
 
     V "icacls authorized_keys (限 $acct:R + SYSTEM:R)"
     icacls $AkPath /inheritance:r /grant:r "${acct}:(R)" "SYSTEM:(R)" | Out-Null
-    icacls $AkPath /remove "(${env:COMPUTERNAME}\${env:USERNAME})" 2>&1 | Out-Null
 }
 
 function Install-FrpcService {
