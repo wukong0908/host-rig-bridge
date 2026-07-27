@@ -41,7 +41,7 @@ function If-Skip {
 }
 
 # stage → ReadyCheck 名字映射 (deploy 时只看对应 ReadyCheck 决定跑不跑)
-$StageMap = @{
+$StageMap = [ordered]@{
     1 = @("sshd 服务", "sshd listen 22")
     2 = @("mcp-rig 账号")
     3 = @("server dir")
@@ -49,15 +49,15 @@ $StageMap = @{
     5 = @("venv")
     6 = @("authorized_keys")
     7 = @("frpc 服务", "frpc.toml")
-    8 = $null  # sshd_config 锁不在 ReadyCheck,总是跑(幂等覆盖)
-    9 = $null  # Verify Ready 总是跑
+    8 = @()  # sshd_config 锁不在 ReadyCheck,总是跑(幂等覆盖)
+    9 = @()  # Verify Ready 总是跑
 }
 
 function Should-Stage {
     param([int]$N)
     if ($Force) { return $true }
-    $names = $StageMap[$N]
-    if (-not $names) { return $true }
+    $names = $StageMap[[string]$N]
+    if (-not $names -or $names.Count -eq 0) { return $true }
     $missing = $script:ReadyDetail | Where-Object { -not $_.Pass } | ForEach-Object { $_.Name }
     foreach ($n in $names) { if ($missing -contains $n) { return $true } }
     return $false
